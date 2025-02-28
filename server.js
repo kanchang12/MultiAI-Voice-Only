@@ -242,13 +242,24 @@ app.post('/conversation', async (req, res) => {
       bargeIn: true,
     });
 
+
+    // *** KEY CHANGES START HERE ***
+    const currentMessage = inputText;  // Use inputText here (from Twilio)
+    const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ?
+                             conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
+
+    const messagePair = [
+      { role: "user", content: currentMessage },
+      { role: "assistant", content: previousResponse }
+    ];
+
     // Clean response text (remove HTML tags)
     const responseText = aiResponse.response.replace(/<[^>]*>/g, "");
     gather.say({ voice: 'Polly.Matthew-Neural' }, responseText);
-    
+
     // Add a small pause to allow for natural conversation
     response.pause({ length: 1 });
-    
+
     // Add a final gather to ensure we catch the user's response
     const finalGather = response.gather({
       input: 'speech dtmf',
@@ -262,15 +273,7 @@ app.post('/conversation', async (req, res) => {
     res.type('text/xml');
     res.send(response.toString());
 
-    const currentMessage = userMessage;  // Define variable for current message
-    const previousResponse = webChatSessions[sessionId].length > 0 ? 
-                         webChatSessions[sessionId][webChatSessions[sessionId].length - 1].assistant : ""; // Define variable for the last AI response (or empty if none)
 
-    const messagePair = [
-    { role: "user", content: currentMessage },
-    { role: "assistant", content: previousResponse } // Include the previous response
-      ];
-    
     // Log conversation for debugging
     console.log(`Call SID: ${callSid}`);
     console.log(`User: ${inputText}`);
