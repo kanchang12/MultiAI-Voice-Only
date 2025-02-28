@@ -105,7 +105,7 @@ app.post('/twiml', (req, res) => {
     method: 'POST',
     timeout: 3,
     speechTimeout: 'auto',
-    bargeIn: true,
+    bargeIn: false,
   });
 
   gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?', { voice: 'Polly.Matthew.Neural' });
@@ -160,7 +160,7 @@ app.post('/conversation', async (req, res) => {
     method: 'POST',
     timeout: 5,
     speechTimeout: 'auto',
-    bargeIn: true,
+    bargeIn: false,
   });
 
   gather.say(aiResponse.response, { voice: 'Polly.Matthew.Neural' });
