@@ -108,7 +108,7 @@ app.post('/twiml', (req, res) => {
     bargeIn: false,
   });
 
-  gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?', { voice: 'Matthew' });
+  gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?', { voice: 'Polly.Matthew' });
   response.redirect('/conversation');
 
   res.type('text/xml');
@@ -125,7 +125,7 @@ app.post('/conversation', async (req, res) => {
 
   // Handle hang up requests
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say('Thank you for your time. Have a good day.', { voice: 'Matthew' });
+    response.say('Thank you for your time. Have a good day.', { voice: 'Polly.Matthew' });
     response.hangup();
     return res.type('text/xml').send(response.toString());
   }
@@ -163,7 +163,7 @@ app.post('/conversation', async (req, res) => {
     bargeIn: false,
   });
 
-  gather.say(aiResponse.response, { voice: 'Matthew'  });
+  gather.say(aiResponse.response, { voice: 'Polly.Matthew'  });
   res.type('text/xml').send(response.toString());
 });
 
