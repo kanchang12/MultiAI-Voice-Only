@@ -242,6 +242,7 @@ Make sure to keep the conversation **natural, engaging, and non-repetitive** whi
     let responseText = openaiResponse.choices[0].message.content.trim();
     const suggestedAppointment = responseText.includes('[Appointment Suggested]');
     responseText = responseText.replace('[Appointment Suggested]', '');
+    console.log("🔹 AI Response:", responseText);
 
     // Save to conversation history if this is a call
     if (callSid) {
