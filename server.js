@@ -108,7 +108,7 @@ app.post('/twiml', (req, res) => {
     bargeIn: false,
   });
 
-  gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?', { voice: 'Polly.Matthew' });
+  gather.say({ voice: 'Polly.Matthew-Neural' }, 'Hello, this is Mat from MultipleAI Solutions. How are you today?');
   response.redirect('/conversation');
 
   res.type('text/xml');
@@ -125,7 +125,7 @@ app.post('/conversation', async (req, res) => {
 
   // Handle hang up requests
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say('Thank you for your time. Have a good day.', { voice: 'Polly.Matthew' });
+    response.say({ voice: 'Polly.Matthew-Neural' }, 'Thank you for your time. Have a good day.');
     response.hangup();
     return res.type('text/xml').send(response.toString());
   }
@@ -163,7 +163,7 @@ app.post('/conversation', async (req, res) => {
     bargeIn: false,
   });
 
-  gather.say(aiResponse.response, { voice: 'Polly.Matthew'  });
+  gather.say({ voice: 'Polly.Matthew-Neural' }, aiResponse.response);
   res.type('text/xml').send(response.toString());
 });
 
@@ -211,7 +211,7 @@ Don't say hello hi more than once
 
 follow the conversation flow properly
 
-
+ANSWER THE QUESTION USER ASKING!  ALWAYS
 
 ### Conversation Flow:
 1. **Start with small talk** (e.g., "Hello! How's your morning going?" or "Hope you're having a good day so far.")
