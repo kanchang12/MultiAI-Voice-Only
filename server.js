@@ -217,5 +217,13 @@ Respond in a natural, conversational way and suggest an appointment when appropr
   }
 }
 
+
+const PORT = process.env.PORT || 8000;
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
+
 // Export the app for Koyeb
 module.exports = app;
+
