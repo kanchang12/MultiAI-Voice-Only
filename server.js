@@ -26,7 +26,7 @@ const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
 const twilioClient = twilio(accountSid, authToken);
 
-
+const conversation_history = {}; // <-- ADDED THIS LINE
 
 // Configure OpenAI
 
@@ -758,9 +758,10 @@ Here's how to approach the conversation:
 
 11. **User's Input:** ${userInput}
 
+Conversation so far Conversation Context: ${JSON.stringify(conversation_history)}
 
 
-Current Exchange:** ${JSON.stringify(messagePair)}
+
 
 
 
@@ -802,7 +803,7 @@ If the user expresses clear interest in a meeting or asks about scheduling an ap
 
     responseText = responseText.replace('[Appointment Suggested]', '');
 
-    
+    conversation_history.push({ user: userInput, assistant: responseText });
 
     // Log response for debugging
 
