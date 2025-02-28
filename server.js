@@ -412,7 +412,7 @@ app.post('/conversation', async (req, res) => {
 
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
 
-    response.say({ voice: 'Polly.Matthew-Neural' }, 'Thank you for your time. Have a good day.');
+    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand youd like to stop. Could you let me know if theres something specific that bothering you or if you like to end the call?",');
 
     response.hangup();
 
