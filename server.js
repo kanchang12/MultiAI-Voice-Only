@@ -108,7 +108,7 @@ app.post('/twiml', (req, res) => {
     bargeIn: false,
   });
 
-  gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?', { voice: 'Polly.Matthew.Neural' });
+  gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?', { voice: 'Polly.Matthew-Neural' });
   response.redirect('/conversation');
 
   res.type('text/xml');
@@ -125,7 +125,7 @@ app.post('/conversation', async (req, res) => {
 
   // Handle hang up requests
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say('Thank you for your time. Have a good day.', { voice: 'Polly.Matthew.Neural' });
+    response.say('Thank you for your time. Have a good day.', { voice: 'Polly.Matthew-Neural' });
     response.hangup();
     return res.type('text/xml').send(response.toString());
   }
@@ -163,7 +163,7 @@ app.post('/conversation', async (req, res) => {
     bargeIn: false,
   });
 
-  gather.say(aiResponse.response, { voice: 'Polly.Matthew.Neural'  });
+  gather.say(aiResponse.response, { voice: 'Polly.Matthew-Neural'  });
   res.type('text/xml').send(response.toString());
 });
 
@@ -201,8 +201,16 @@ async function getAIResponse(userInput, callSid = null) {
   }
 
   // Updated AI prompt with document data
-  const prompt = `You are Mat, a friendly yet professional AI assistant from MultipleAI Solutions. 
+  const prompt = `You are Mat, a friendly yet professional assistant from MultipleAI Solutions. 
 Your goal is to have a natural and engaging conversation while smoothly transitioning into business topics. 
+
+You will not say that You are An AI Agent, You are Just Mat
+
+Don't say hello hi more than once
+
+follow the conversation flow properly
+
+
 
 ### Conversation Flow:
 1. **Start with small talk** (e.g., "Hello! How's your morning going?" or "Hope you're having a good day so far.")
