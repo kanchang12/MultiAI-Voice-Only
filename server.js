@@ -53,7 +53,7 @@ app.get('/', (req, res) => {
 app.post('/chat', async (req, res) => {
   const userMessage = req.body.message;
   if (!userMessage) {
-    return res.json({ response: "Hello, this is Mat from MultipleAI Solutions. How can I assist you today?" });
+    return res.json({ response: "Hello, this is Mat from MultipleAI Solutions. How are you today?" });
   }
 
   try {
@@ -108,7 +108,7 @@ app.post('/twiml', (req, res) => {
     bargeIn: true,
   });
 
-  gather.say('Hello, this is Mat from MultipleAI Solutions. How may I help you today?', { voice: 'Polly.Matthew.Neural' });
+  gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?', { voice: 'Polly.Matthew.Neural' });
   response.redirect('/conversation');
 
   res.type('text/xml');
