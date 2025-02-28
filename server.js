@@ -135,14 +135,21 @@ app.post('/call', async (req, res) => {
     return res.status(400).json({ error: 'No phone number provided' });
   }
 
-  try {
-    const call = await twilioClient.calls.create({
-      to: phoneNumber,
-      from: twilioPhoneNumber,
-      url: `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/twiml`,
-      machineDetection: 'Enable',
-      asyncAmd: true
-    });
+try {
+
+    const call = await twilioClient.calls.create({
+
+      to: phoneNumber,
+
+      from: twilioPhoneNumber,
+
+      url: `${req.protocol}://${req.get('host')}/twiml`,
+
+      machineDetection: 'Enable', // Detect answering machines
+
+      asyncAmd: true // Asynchronous answering machine detection
+
+    });
 
     conversationHistory[call.sid] = [];
 
@@ -290,14 +297,13 @@ async function getAIResponse(userInput, callSid = null, messagePair = null, webS
 
   const searchResults = searchDocumentsWithRegex(userInput, documentData);
 
+  // Format search results for context
   let relevantDocs = '';
   for (const [filename, result] of Object.entries(searchResults)) {
-    relevantDocs += `\nFrom <span class="math-inline">\{filename\}\:\\n</span>{result.contexts.join('\n')}\n`;
+    relevantDocs += \nFrom ${filename}:\n${result.contexts.join('\n')}\n;
   }
 
-  if (relevantDocs.length > 1500) {
-    relevantDocs = relevantDocs.substring(0, 1500) + "... (additional relevant content omitted)";
-  }
+
 
   const prompt = `
 You are Mat, a friendly and professional assistant from MultipleAI Solutions, based in Perth, Australia. You are *not* an AI; you are a human representative. Your responses should exclusively utilize the Polly.Matthew-Neural voice, without any SSML tags or additional voice specifications.
