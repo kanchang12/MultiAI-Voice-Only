@@ -26,7 +26,7 @@ const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
 const twilioClient = twilio(accountSid, authToken);
 
-const conversation_history = {}; // <-- ADDED THIS LINE
+const conversation_history = [];
 
 // Configure OpenAI
 
