@@ -261,6 +261,15 @@ app.post('/conversation', async (req, res) => {
 
     res.type('text/xml');
     res.send(response.toString());
+
+    const currentMessage = userMessage;  // Define variable for current message
+    const previousResponse = webChatSessions[sessionId].length > 0 ? 
+                         webChatSessions[sessionId][webChatSessions[sessionId].length - 1].assistant : ""; // Define variable for the last AI response (or empty if none)
+
+    const messagePair = [
+    { role: "user", content: currentMessage },
+    { role: "assistant", content: previousResponse } // Include the previous response
+      ];
     
     // Log conversation for debugging
     console.log(`Call SID: ${callSid}`);
@@ -366,6 +375,8 @@ Here's how to approach the conversation:
 10. **Relevant Document Information:** Here's some information that might be relevant: ${relevantDocs}
 
 11. **User's Input:** ${userInput}
+
+Current Exchange:** ${JSON.stringify(messagePair)}
 
 If the user expresses clear interest in a meeting or asks about scheduling an appointment, include [Appointment Suggested] at the end of your response.
   `;
