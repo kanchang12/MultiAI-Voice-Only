@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const twilio = require('twilio');
 const { OpenAI } = require('openai');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 
@@ -16,6 +17,21 @@ const twilioClient = twilio(accountSid, authToken);
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Load document data from JSON file
+let documentData = {};
+const documentJsonPath = path.join(__dirname, 'document_contents.json');
+
+try {
+  if (fs.existsSync(documentJsonPath)) {
+    documentData = JSON.parse(fs.readFileSync(documentJsonPath, 'utf8'));
+    console.log(`Loaded ${Object.keys(documentData).length} documents from JSON file`);
+  } else {
+    console.log('Document JSON file not found. Running without document data.');
+  }
+} catch (error) {
+  console.error('Error loading document JSON file:', error);
+}
 
 // Global cache for conversation history
 const conversationHistory = {};
@@ -37,7 +53,7 @@ app.get('/', (req, res) => {
 app.post('/chat', async (req, res) => {
   const userMessage = req.body.message;
   if (!userMessage) {
-    return res.json({ response: "Hi there! How can I help you today?" });
+    return res.json({ response: "Hello, this is Mat from MultipleAI Solutions. How can I assist you today?" });
   }
 
   try {
@@ -45,7 +61,7 @@ app.post('/chat', async (req, res) => {
     res.json({ response: aiResponse.response, suggestedAppointment: aiResponse.suggestedAppointment });
   } catch (error) {
     console.error('Error in /chat:', error);
-    res.status(500).json({ response: "I'm sorry, I'm having trouble processing your request right now. Could you try again?", suggestedAppointment: false });
+    res.status(500).json({ response: "I apologize, but I'm experiencing technical difficulties. Could you please try again?", suggestedAppointment: false });
   }
 });
 
@@ -92,7 +108,7 @@ app.post('/twiml', (req, res) => {
     bargeIn: true,
   });
 
-  gather.say('Hi there! This is Sarah from MultipleAI Solutions. How are you today?', { voice: 'Polly.Joanna' });
+  gather.say('Hello, this is Mat from MultipleAI Solutions. How may I help you today?', { voice: 'Polly.Matthew' });
   response.redirect('/conversation');
 
   res.type('text/xml');
@@ -109,7 +125,7 @@ app.post('/conversation', async (req, res) => {
 
   // Handle hang up requests
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say('Thank you for your time. Have a great day!', { voice: 'Polly.Joanna' });
+    response.say('Thank you for your time. Have a good day.', { voice: 'Polly.Matthew' });
     response.hangup();
     return res.type('text/xml').send(response.toString());
   }
@@ -124,16 +140,16 @@ app.post('/conversation', async (req, res) => {
       const phoneNumber = call.to;
 
       await twilioClient.messages.create({
-        body: `Here is the link to schedule a meeting: ${CALENDLY_LINK}`,
+        body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
         from: twilioPhoneNumber,
         to: phoneNumber,
       });
 
       console.log(`SMS sent to ${phoneNumber}`);
-      aiResponse.response += ` I've also sent you an SMS with the booking link.`;
+      aiResponse.response += ` I've sent you an SMS with the booking link.`;
     } catch (error) {
       console.error('Error sending SMS:', error);
-      aiResponse.response += ` I tried to send you an SMS, but there was an error. You can schedule a meeting here: ${CALENDLY_LINK}`;
+      aiResponse.response += ` I wanted to send you the booking link via SMS, but there was an error. You can schedule a meeting here: ${CALENDLY_LINK}`;
     }
   }
 
@@ -147,7 +163,7 @@ app.post('/conversation', async (req, res) => {
     bargeIn: true,
   });
 
-  gather.say(aiResponse.response, { voice: 'Polly.Joanna' });
+  gather.say(aiResponse.response, { voice: 'Polly.Matthew' });
   res.type('text/xml').send(response.toString());
 });
 
@@ -161,29 +177,56 @@ async function getAIResponse(userInput, callSid = null) {
       .join('\n');
   }
 
-  // Updated AI prompt
-  const prompt = `You are Sarah, a friendly and helpful representative from MultipleAI Solutions. Your goal is to have a natural, human-like conversation with the user, starting with small talk and gradually transitioning to discussing business solutions.
+  // Find relevant document content based on user input
+  let relevantDocs = '';
+  const userInputLower = userInput.toLowerCase();
+  
+  // Simple keyword matching to find relevant documents
+  for (const [filename, content] of Object.entries(documentData)) {
+    // Check if document content might be relevant to user query
+    const contentLower = content.toLowerCase();
+    const isRelevant = userInputLower.split(' ').some(word => 
+      word.length > 3 && contentLower.includes(word.toLowerCase())
+    );
+    
+    if (isRelevant) {
+      // Include an excerpt (first 200 characters) from relevant documents
+      relevantDocs += `\nFrom ${filename}: ${content.substring(0, 200)}...\n`;
+    }
+  }
+
+  // Limit the total amount of document content to avoid token limits
+  if (relevantDocs.length > 1000) {
+    relevantDocs = relevantDocs.substring(0, 1000) + "... (additional relevant content omitted)";
+  }
+
+  // Updated AI prompt with document data
+  const prompt = `You are Mat, a professional representative from MultipleAI Solutions. Your goal is to have a helpful, business-focused conversation with the user, providing information about AI solutions that could benefit their business.
 
 When responding:
-1. Start with casual, friendly small talk (e.g., "How's your day going?" or "I hope you're having a great day!").
-2. Gradually steer the conversation toward AI solutions and business needs.
-3. Use a warm, conversational tone with contractions (e.g., "I'm", "we're", "can't").
-4. Keep responses concise (2-3 sentences).
-5. If the user expresses interest or asks about AI solutions, suggest booking an appointment and include the phrase "[Appointment Suggested]" at the end of your response.
-6. When suggesting an appointment, provide a clickable link: <a href="${CALENDLY_LINK}" target="_blank">Schedule a meeting here</a>.
-7. If the user is silent, ask a follow-up question related to the current topic.
-8. Avoid repeating yourself or sounding robotic.
-9. If the user asks for a booking link, send it via SMS and mention it in the chat.
+1. Maintain a professional, courteous tone throughout the conversation.
+2. Focus on understanding the user's business needs and how AI solutions might help them.
+3. Use clear, concise language and avoid overly technical jargon unless appropriate.
+4. Keep responses brief and to the point (2-3 sentences).
+5. If the user expresses interest in learning more about specific solutions, suggest booking an appointment and include the phrase "[Appointment Suggested]" at the end of your response.
+6. When suggesting an appointment, provide a clickable link: <a href="${CALENDLY_LINK}" target="_blank">Schedule a consultation here</a>.
+7. If the user is silent or unclear, ask a specific question to better understand their business needs.
+8. Use the document content below to inform your answers when relevant.
+9. If the user asks for a booking link, tell them you'll send it via SMS and mention it in the chat.
+10. Avoid using overly casual or personal language that might seem unprofessional.
+
+Document information:
+${relevantDocs ? relevantDocs : "No relevant documents found for this query."}
 
 Previous conversation:
 ${conversationContext}
 
-User's question: ${userInput}
+User's message: ${userInput}
 
-Respond in a natural, conversational way and suggest an appointment when appropriate:`;
+Respond professionally and suggest an appointment when appropriate:`;
 
   try {
-     const openaiResponse = await openai.chat.completions.create({
+    const openaiResponse = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
         { role: 'system', content: prompt },
@@ -213,10 +256,9 @@ Respond in a natural, conversational way and suggest an appointment when appropr
     return { response: responseText, suggestedAppointment };
   } catch (error) {
     console.error('Error in getAIResponse:', error);
-    return { response: "I'm sorry, I'm having trouble processing your request right now. Could you try again?", suggestedAppointment: false };
+    return { response: "I apologize, but I'm having trouble processing your request. Could you please try again?", suggestedAppointment: false };
   }
 }
-
 
 const PORT = process.env.PORT || 8000;
 
@@ -226,4 +268,3 @@ app.listen(PORT, () => {
 
 // Export the app for Koyeb
 module.exports = app;
-
