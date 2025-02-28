@@ -183,7 +183,7 @@ User's question: ${userInput}
 Respond in a natural, conversational way and suggest an appointment when appropriate:`;
 
   try {
-    const openaiResponse = await openai.chat.completions.create({
+     const openaiResponse = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [
         { role: 'system', content: prompt },
