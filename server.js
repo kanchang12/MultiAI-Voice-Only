@@ -18,22 +18,24 @@ const performanceMetrics = {
   totalRequestTime: []
 };
 
-// Function to track execution time
 function trackPerformance(category, executionTime) {
-  performanceMetrics[category].push(executionTime);
-  
-  // Keep only the last 100 measurements
-  if (performanceMetrics[category].length > 100) {
-    performanceMetrics[category].shift();
-  }
-  
-  // Calculate and print average time
-  const avg = performanceMetrics[category].reduce((sum, time) => sum + time, 0) / 
-             performanceMetrics[category].length;
-  
-  console.log(`[PERFORMANCE] ${category}: ${executionTime.toFixed(2)}ms (Avg: ${avg.toFixed(2)}ms)`);
-}
+    if (!performanceMetrics[category]) {
+        performanceMetrics[category] = []; // Initialize if it doesn't exist
+    }
 
+    performanceMetrics[category].push(executionTime);
+
+    // Keep only the last 100 measurements
+    if (performanceMetrics[category].length > 100) {
+        performanceMetrics[category].shift();
+    }
+
+    // Calculate and print average time
+    const avg = performanceMetrics[category].reduce((sum, time) => sum + time, 0) /
+        performanceMetrics[category].length;
+
+    console.log(`[PERFORMANCE] ${category}: ${executionTime.toFixed(2)}ms (Avg: ${avg.toFixed(2)}ms)`);
+}
 // Function to print performance table
 function printPerformanceTable() {
   const table = new Table({
