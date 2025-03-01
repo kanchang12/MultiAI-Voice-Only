@@ -581,7 +581,7 @@ If the user expresses clear interest in a meeting or asks about scheduling an ap
     const aiStartTime = performance.now();
     
     const openaiResponse = await openai.chat.completions.create({
-      model: 'gpt-4', // Or your preferred model
+      model: 'gpt-3.5-turbo', // Or your preferred model
       messages: [
         { role: 'system', content: prompt },
         { role: 'user', content: userInput },
