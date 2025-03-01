@@ -11,6 +11,7 @@
     "twilio": "^4.13.0",
     "openai": "^4.0.0",
     "body-parser": "^1.20.2",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "cli-table3": "^0.6.3"
   }
 }
