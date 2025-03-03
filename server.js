@@ -105,27 +105,24 @@ async function callElevenLabsAgent(userInput, callSid) {
                 .join('\n');
         }
 
-        const response = await axios.get('https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${process.env.ELEVENLABS_AGENT_ID}',
-            {
-                text: userInput,
-                history: conversationContext,
-                voice_settings: {
-                    stability: 0.5,
-                    similarity_boost: 0.75,
-                    style: 0.0,
-                    use_speaker_boost: true
-                },
-                output_format: "mp3_44100_128",
-                model_id: "eleven_turbo_v2"
-            },
-            {
-                headers: {
-                    'xi-api-key': ELEVENLABS_API_KEY,
-                    'Content-Type': 'application/json'
-                },
-                responseType: 'arraybuffer'
-            }
-        );
+    const response = await axios.get(
+      `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${process.env.ELEVENLABS_AGENT_ID}`,  // Correct template string
+      {
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,  // Use the API key
+          'Content-Type': 'application/json'
+        },
+        responseType: 'json',  // Expect JSON response since the signed URL is typically returned in JSON
+      }
+    );
+    
+    if (response.data && response.data.signed_url) {
+      const signedUrl = response.data.signed_url; // Extract the signed URL
+      return signedUrl;  // Return or use the signed URL
+    } else {
+      throw new Error('Failed to get signed URL');
+    }
+
 
         const tempDir = path.join(__dirname, 'temp');
         if (!fs.existsSync(tempDir)) {
