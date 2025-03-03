@@ -450,7 +450,7 @@ app.post('/twiml', async (req, res) => {
 
         (async () => {
             const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
-            const greetingResponse = await callElevenLabsAgent(greeting, callSid);
+            const greetingResponse = callElevenLabsAgent(greeting, callSid);
         })();
 
 
