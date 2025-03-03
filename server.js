@@ -415,7 +415,7 @@ app.post('/call', async (req, res) => {
         const call = await twilioClient.calls.create({
             to: phoneNumber,
             from: twilioPhoneNumber,
-            url: `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/twiml`,
+            url: `${req.protocol}://${req.get('host')}/twiml`, 
             machineDetection: 'Enable',
             asyncAmd: true
         });
