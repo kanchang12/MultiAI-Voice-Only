@@ -495,7 +495,7 @@ app.post('/twiml', async (req, res) => {
 
     // Initial greeting
     const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
-    const greetingResponse = await callElevenLabsAgent(greeting, callSid);
+    const greetingResponse = callElevenLabsAgent(greeting, callSid);
     
     const gather = response.gather({
       input: 'speech dtmf',
