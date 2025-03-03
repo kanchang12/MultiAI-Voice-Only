@@ -800,7 +800,7 @@ async function initializeServer() {
   }
 }
 
-app.post('/twiml', async (req, res) => {
+app.post('/twiml', async (req, res) => { // Make the route handler async
     const callSid = req.body.CallSid;
     const machineResult = req.body.AnsweredBy;
     const response = new twilio.twiml.VoiceResponse();
@@ -808,7 +808,7 @@ app.post('/twiml', async (req, res) => {
     try {
         if (machineResult === 'machine_start') {
             const voicemailMessage = 'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.';
-            const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid);
+            const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid); // await is OK here
             const audioUrl = `${req.protocol}://${req.get('host')}/audio/${voicemailResponse.audioFileName}`;
             response.play(audioUrl);
             response.hangup();
@@ -818,7 +818,7 @@ app.post('/twiml', async (req, res) => {
         }
 
         const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
-        const greetingResponse = await callElevenLabsAgent(greeting, callSid); // Await is crucial
+        const greetingResponse = await callElevenLabsAgent(greeting, callSid); // await is OK here
 
         conversation_history[callSid] = [{
             user: "",
@@ -843,17 +843,8 @@ app.post('/twiml', async (req, res) => {
 
     } catch (error) {
         console.error('Error in /twiml:', error);
-
-        const gather = response.gather({
-            input: 'speech dtmf',
-            action: '/conversation',
-            method: 'POST',
-            timeout: 3,
-            speechTimeout: 'auto',
-            bargeIn: true,
-        });
-
-        gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?');
+        const response = new twilio.twiml.VoiceResponse();
+        response.say("I'm sorry, there's been an error. Please try again later."); // Or a more informative message
         res.type('text/xml');
         res.send(response.toString());
     }
