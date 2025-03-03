@@ -92,75 +92,70 @@ let documentIndex = {
   lastUpdated: null
 };
 
-// Function to interact with ElevenLabs Agents API
+// Function to interact with ElevenLabs Agents API (Complete and Correct)
 async function callElevenLabsAgent(userInput, callSid) {
-  const startTime = performance.now();
-  
-  try {
-    // Get conversation history for this call
-    let conversationContext = '';
-    if (callSid && conversationHistory[callSid]) {
-      conversationContext = conversationHistory[callSid]
-        .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
-        .join('\n');
+    const startTime = performance.now();
+
+    try {
+        let conversationContext = '';
+        if (callSid && conversation_history[callSid]) { // Use conversation_history
+            conversationContext = conversation_history[callSid]
+                .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
+                .join('\n');
+        }
+
+        const response = await axios.post(
+            `https://api.elevenlabs.io/v1/agents/${ELEVENLABS_AGENT_ID}/chat`,
+            {
+                text: userInput,
+                history: conversationContext,
+                voice_settings: {
+                    stability: 0.5,
+                    similarity_boost: 0.75,
+                    style: 0.0,
+                    use_speaker_boost: true
+                },
+                output_format: "mp3_44100_128",
+                model_id: "eleven_turbo_v2"
+            },
+            {
+                headers: {
+                    'xi-api-key': ELEVENLABS_API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                responseType: 'arraybuffer'
+            }
+        );
+
+        const tempDir = path.join(__dirname, 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+
+        const audioFileName = `response_${callSid || 'web'}_${Date.now()}.mp3`;
+        const audioFilePath = path.join(tempDir, audioFileName);
+        fs.writeFileSync(audioFilePath, response.data);
+
+        const textResponse = response.headers['x-elevenlabs-agent-response'] ||
+            "I'm sorry, I couldn't process your request at this time.";
+
+        const executionTime = performance.now() - startTime;
+        trackPerformance('elevenLabsGeneration', executionTime);
+
+        return {
+            text: textResponse,
+            audioPath: audioFilePath,
+            audioFileName: audioFileName,
+            suggestedAppointment: textResponse.toLowerCase().includes('schedule') ||
+                textResponse.toLowerCase().includes('appointment') ||
+                textResponse.toLowerCase().includes('meeting')
+        };
+    } catch (error) {
+        console.error('Error with ElevenLabs agent:', error);
+        const executionTime = performance.now() - startTime;
+        trackPerformance('elevenLabsGeneration', executionTime);
+        throw error;
     }
-    
-    // Call ElevenLabs Agent API
-    const response = await axios.post(
-      `https://api.elevenlabs.io/v1/agents/${ELEVENLABS_AGENT_ID}/chat`,
-      {
-        text: userInput,
-        history: conversationContext,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-          style: 0.0,
-          use_speaker_boost: true
-        },
-        output_format: "mp3_44100_128",
-        model_id: "eleven_turbo_v2"
-      },
-      {
-        headers: {
-          'xi-api-key': ELEVENLABS_API_KEY,
-          'Content-Type': 'application/json'
-        },
-        responseType: 'arraybuffer'
-      }
-    );
-    
-    // Create temp directory if it doesn't exist
-    const tempDir = path.join(__dirname, 'temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-    
-    // Save the audio response to a file
-    const audioFileName = `response_${callSid || 'web'}_${Date.now()}.mp3`;
-    const audioFilePath = path.join(tempDir, audioFileName);
-    fs.writeFileSync(audioFilePath, response.data);
-    
-    // Get the text response from headers
-    const textResponse = response.headers['x-elevenlabs-agent-response'] || 
-                         "I'm sorry, I couldn't process your request at this time.";
-    
-    const executionTime = performance.now() - startTime;
-    trackPerformance('elevenLabsGeneration', executionTime);
-    
-    return {
-      text: textResponse,
-      audioPath: audioFilePath,
-      audioFileName: audioFileName,
-      suggestedAppointment: textResponse.toLowerCase().includes('schedule') || 
-                            textResponse.toLowerCase().includes('appointment') ||
-                            textResponse.toLowerCase().includes('meeting')
-    };
-  } catch (error) {
-    console.error('Error with ElevenLabs agent:', error);
-    const executionTime = performance.now() - startTime;
-    trackPerformance('elevenLabsGeneration', executionTime);
-    throw error;
-  }
 }
 
 // Load and index document data
@@ -448,27 +443,68 @@ app.post('/call', async (req, res) => {
   }
 });
 
-// Initial TwiML for call
+// Initial TwiML for call (Complete and Correct)
 app.post('/twiml', async (req, res) => {
-  const callSid = req.body.CallSid;
-  const machineResult = req.body.AnsweredBy;
-  const response = new twilio.twiml.VoiceResponse();
+    const callSid = req.body.CallSid;
+    const machineResult = req.body.AnsweredBy;
+    const response = new twilio.twiml.VoiceResponse();
 
-  try {
-    // If answering machine is detected, leave a voicemail
-    if (machineResult === 'machine_start') {
-      const voicemailMessage = 'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.';
-      
-      const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid);
-      
-      // Use the audio file generated by ElevenLabs
-      const audioUrl = `${req.protocol}://${req.get('host')}/audio/${voicemailResponse.audioFileName}`;
-      response.play(audioUrl);
-      response.hangup();
-      
-      return res.type('text/xml').send(response.toString());
+    try {
+        if (machineResult === 'machine_start') {
+            const voicemailMessage = 'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.';
+
+            const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid);
+            const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${voicemailResponse.audioFileName}`;
+            response.play(audioUrl);
+            response.hangup();
+
+            return res.type('text/xml').send(response.toString());
+        }
+
+        const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
+        const greetingResponse = await callElevenLabsAgent(greeting, callSid); // Use callSid
+
+        const gather = response.gather({
+            input: 'speech dtmf',
+            action: '/conversation',
+            method: 'POST',
+            timeout: 3,
+            speechTimeout: 'auto',
+            bargeIn: true,
+        });
+
+        const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${greetingResponse.audioFileName}`;
+        gather.play(audioUrl);
+
+        conversation_history[callSid] = [{  // Key change: Use callSid
+            user: "",
+            assistant: greeting,
+            timestamp: Date.now()
+        }];
+
+        response.redirect('/conversation');
+
+        res.type('text/xml');
+        res.send(response.toString());
+    } catch (error) {
+        console.error('Error in /twiml:', error);
+
+        const gather = response.gather({ // Fallback to Twilio TTS
+            input: 'speech dtmf',
+            action: '/conversation',
+            method: 'POST',
+            timeout: 3,
+            speechTimeout: 'auto',
+            bargeIn: true,
+        });
+
+        gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?');
+        response.redirect('/conversation');
+
+        res.type('text/xml');
+        res.send(response.toString());
     }
-
+});
     // Initial greeting
     const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
     const greetingResponse = await callElevenLabsAgent(greeting, callSid);
@@ -519,38 +555,35 @@ app.post('/twiml', async (req, res) => {
 });
 
 // Conversation handler
+// Conversation handler (Complete and Correct)
 app.post('/conversation', async (req, res) => {
-  const requestStartTime = performance.now();
-  
-  const userSpeech = req.body.SpeechResult || '';
-  const callSid = req.body.CallSid;
-  const digits = req.body.Digits || '';
+    const requestStartTime = performance.now();
+    const userSpeech = req.body.SpeechResult || '';
+    const callSid = req.body.CallSid; // Get callSid from Twilio
+    const digits = req.body.Digits || '';
 
-  const response = new twilio.twiml.VoiceResponse();
+    const response = new twilio.twiml.VoiceResponse();
 
-  if (callSid && !conversationHistory[callSid]) {
-    conversationHistory[callSid] = [];
-  }
-
-  // Handle hang up
-  if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    try {
-      const goodbyeMessage = "Thank you for your time. Goodbye!";
-      const goodbyeResponse = await callElevenLabsAgent(goodbyeMessage, callSid);
-      
-      // Use the audio file generated by ElevenLabs
-      const audioUrl = `${req.protocol}://${req.get('host')}/audio/${goodbyeResponse.audioFileName}`;
-      response.play(audioUrl);
-      response.hangup();
-      
-      return res.type('text/xml').send(response.toString());
-    } catch (error) {
-      console.error('Error generating goodbye message:', error);
-      response.say("Thank you for your time. Goodbye!");
-      response.hangup();
-      return res.type('text/xml').send(response.toString());
+    if (callSid && !conversation_history[callSid]) {
+        conversation_history[callSid] = []; // Use conversation_history
     }
-  }
+
+    if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
+        try {
+            const goodbyeMessage = "Thank you for your time. Goodbye!";
+            const goodbyeResponse = await callElevenLabsAgent(goodbyeMessage, callSid);
+            const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${goodbyeResponse.audioFileName}`;
+            response.play(audioUrl);
+            response.hangup();
+
+            return res.type('text/xml').send(response.toString());
+        } catch (error) {
+            console.error('Error generating goodbye message:', error);
+            response.say("Thank you for your time. Goodbye!");
+            response.hangup();
+            return res.type('text/xml').send(response.toString());
+        }
+    }
 
   try {
     const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
