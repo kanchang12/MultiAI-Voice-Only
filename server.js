@@ -800,6 +800,65 @@ async function initializeServer() {
   }
 }
 
+app.post('/twiml', async (req, res) => {
+    const callSid = req.body.CallSid;
+    const machineResult = req.body.AnsweredBy;
+    const response = new twilio.twiml.VoiceResponse();
+
+    try {
+        if (machineResult === 'machine_start') {
+            const voicemailMessage = 'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.';
+            const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid);
+            const audioUrl = `${req.protocol}://${req.get('host')}/audio/${voicemailResponse.audioFileName}`;
+            response.play(audioUrl);
+            response.hangup();
+            res.type('text/xml');
+            res.send(response.toString());
+            return; // Important: Stop further execution
+        }
+
+        const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
+        const greetingResponse = await callElevenLabsAgent(greeting, callSid); // Await is crucial
+
+        conversation_history[callSid] = [{
+            user: "",
+            assistant: greeting,
+            timestamp: Date.now()
+        }];
+
+        const gather = response.gather({
+            input: 'speech dtmf',
+            action: '/conversation',
+            method: 'POST',
+            timeout: 3,
+            speechTimeout: 'auto',
+            bargeIn: true,
+        });
+
+        const audioUrl = `${req.protocol}://${req.get('host')}/audio/${greetingResponse.audioFileName}`;
+        gather.play(audioUrl);
+
+        res.type('text/xml'); // Send the TML response
+        res.send(response.toString()); // Send the TML response
+
+    } catch (error) {
+        console.error('Error in /twiml:', error);
+
+        const gather = response.gather({
+            input: 'speech dtmf',
+            action: '/conversation',
+            method: 'POST',
+            timeout: 3,
+            speechTimeout: 'auto',
+            bargeIn: true,
+        });
+
+        gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?');
+        res.type('text/xml');
+        res.send(response.toString());
+    }
+});
+
 // Start the server
 initializeServer();
 
