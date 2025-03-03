@@ -4,320 +4,167 @@ const twilio = require('twilio');
 const { OpenAI } = require('openai');
 const path = require('path');
 const fs = require('fs');
-const axios = require('axios');
 const { performance } = require('perf_hooks');
 const Table = require('cli-table3');
-const { Conversation } = require('@11labs/client');
 
 const app = express();
 
-// Performance tracking (no placeholders)
+// Performance tracking
 const performanceMetrics = {
-    documentLoading: [],
-    indexBuilding: [],
-    documentSearch: [],
-    aiResponse: [],
-    totalRequestTime: [],
-    elevenLabsGeneration: []
+  documentLoading: [],
+  indexBuilding: [],
+  documentSearch: [],
+  aiResponse: [],
+  totalRequestTime: []
 };
 
 function trackPerformance(category, executionTime) {
     if (!performanceMetrics[category]) {
-        performanceMetrics[category] = [];
+        performanceMetrics[category] = []; // Initialize if it doesn't exist
     }
 
     performanceMetrics[category].push(executionTime);
 
+    // Keep only the last 100 measurements
     if (performanceMetrics[category].length > 100) {
         performanceMetrics[category].shift();
     }
 
+    // Calculate and print average time
     const avg = performanceMetrics[category].reduce((sum, time) => sum + time, 0) /
         performanceMetrics[category].length;
 
     console.log(`[PERFORMANCE] ${category}: ${executionTime.toFixed(2)}ms (Avg: ${avg.toFixed(2)}ms)`);
 }
-
+// Function to print performance table
 function printPerformanceTable() {
-    const table = new Table({
-        head: ['Category', 'Last (ms)', 'Avg (ms)', 'Min (ms)', 'Max (ms)', 'Count']
-    });
-
-    for (const [category, times] of Object.entries(performanceMetrics)) {
-        if (times.length === 0) continue;
-
-        const avg = times.reduce((sum, time) => sum + time, 0) / times.length;
-        const min = Math.min(...times);
-        const max = Math.max(...times);
-        const last = times[times.length - 1];
-
-        table.push([
-            category,
-            last.toFixed(2),
-            avg.toFixed(2),
-            min.toFixed(2),
-            max.toFixed(2),
-            times.length
-        ]);
-    }
-
-    console.log("\n===== PERFORMANCE METRICS =====");
-    console.log(table.toString());
-    console.log("===============================\n");
+  const table = new Table({
+    head: ['Category', 'Last (ms)', 'Avg (ms)', 'Min (ms)', 'Max (ms)', 'Count']
+  });
+  
+  for (const [category, times] of Object.entries(performanceMetrics)) {
+    if (times.length === 0) continue;
+    
+    const avg = times.reduce((sum, time) => sum + time, 0) / times.length;
+    const min = Math.min(...times);
+    const max = Math.max(...times);
+    const last = times[times.length - 1];
+    
+    table.push([
+      category,
+      last.toFixed(2),
+      avg.toFixed(2),
+      min.toFixed(2),
+      max.toFixed(2),
+      times.length
+    ]);
+  }
+  
+  console.log("\n===== PERFORMANCE METRICS =====");
+  console.log(table.toString());
+  console.log("===============================\n");
 }
 
-//setInterval(printPerformanceTable, 60000);
+// Schedule periodic performance table printing
+setInterval(printPerformanceTable, 60000); // Print every minute
 
-// ElevenLabs configuration (REPLACE with your actual values)
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID; // Your Agent ID
-
-// Configure Twilio (REPLACE with your actual values)
+// Configure Twilio
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 const twilioClient = twilio(accountSid, authToken);
+const conversation_history = [];
 
-// Initialize conversation_history CORRECTLY:
-const conversation_history = {};
-
-// Configure OpenAI (REPLACE with your actual value)
+// Configure OpenAI
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Inverted index data structure (no placeholders)
+// Inverted index data structure
 let documentIndex = {
+  wordToDocuments: {}, // word -> [document IDs]
+  documentContent: {}, // document ID -> content
+  documentNames: {},   // document ID -> filename
+  lastUpdated: null
+};
+
+// Load and index document data
+async function loadAndIndexDocuments() {
+  const startTime = performance.now();
+  console.log('Loading document data...');
+  
+  const documentJsonPath = path.join(__dirname, 'document_contents.json');
+  let documentData = {};
+  
+  try {
+    if (fs.existsSync(documentJsonPath)) {
+      documentData = JSON.parse(fs.readFileSync(documentJsonPath, 'utf8'));
+      console.log(`Loaded ${Object.keys(documentData).length} documents from JSON file`);
+    } else {
+      console.warn('Document JSON file not found. Running without document data.');
+    }
+  } catch (error) {
+    console.error('Error loading document JSON file:', error);
+  }
+  
+  const loadingTime = performance.now() - startTime;
+  trackPerformance('documentLoading', loadingTime);
+  
+  // Build inverted index
+  await buildInvertedIndex(documentData);
+  
+  return documentData;
+}
+
+// Build inverted index from documents
+async function buildInvertedIndex(documents) {
+  const startTime = performance.now();
+  console.log('Building inverted index...');
+  
+  // Reset the index
+  documentIndex = {
     wordToDocuments: {},
     documentContent: {},
     documentNames: {},
-    lastUpdated: null
-};
-
-const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const { performance } = require('perf_hooks');
-
-// Function to interact with ElevenLabs Agents API
-async function callElevenLabsAgent(userInput, callSid) {
-    const startTime = performance.now();
-
-    try {
-        // Step 1: Build conversation context from history if available
-        const conversationContext = buildConversationContext(callSid);
-
-        // Step 2: Get the signed URL from ElevenLabs API
-        const signedUrl = await getSignedUrlFromElevenLabs();
-
-        // Step 3: Use the signed URL to send user input and get the agent's response
-        const agentResponse = await sendUserInputToElevenLabs(signedUrl, userInput, conversationContext);
-
-        // Step 4: Extract the text response from headers
-        const textResponse = agentResponse.headers['x-elevenlabs-agent-response'] ||
-            "I'm sorry, I couldn't process your request at this time.";
-
-        // Step 5: Save the audio response to a file
-        const { audioFilePath, audioFileName } = saveAudioResponse(agentResponse.data, callSid);
-
-        // Step 6: Track performance and return the response
-        const executionTime = performance.now() - startTime;
-        trackPerformance('elevenLabsGeneration', executionTime);
-
-        return {
-            text: textResponse,
-            audioPath: audioFilePath,
-            audioFileName: audioFileName,
-            suggestedAppointment: checkForAppointmentSuggestion(textResponse)
-        };
-    } catch (error) {
-        console.error('Error with ElevenLabs agent:', error.message);
-        logErrorDetails(error);
-
-        // Track performance even in case of error
-        const executionTime = performance.now() - startTime;
-        trackPerformance('elevenLabsGeneration', executionTime);
-
-        // Return a fallback response
-        return {
-            text: "I apologize, but I'm experiencing technical difficulties connecting to the voice service. Could you please try again?",
-            audioPath: null,
-            audioFileName: null,
-            suggestedAppointment: false
-        };
+    lastUpdated: new Date()
+  };
+  
+  let docId = 0;
+  for (const [filename, content] of Object.entries(documents)) {
+    // Store document content and name
+    documentIndex.documentContent[docId] = content;
+    documentIndex.documentNames[docId] = filename;
+    
+    // Tokenize document content - split into words and remove common words
+    const words = content.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 3 && !isStopWord(word));
+    
+    // Add each unique word to the index
+    const uniqueWords = [...new Set(words)];
+    for (const word of uniqueWords) {
+      if (!documentIndex.wordToDocuments[word]) {
+        documentIndex.wordToDocuments[word] = new Set();
+      }
+      documentIndex.wordToDocuments[word].add(docId);
     }
+    
+    docId++;
+  }
+  
+  // Convert Sets to Arrays for easier use
+  for (const word in documentIndex.wordToDocuments) {
+    documentIndex.wordToDocuments[word] = Array.from(documentIndex.wordToDocuments[word]);
+  }
+  
+  const indexingTime = performance.now() - startTime;
+  trackPerformance('indexBuilding', indexingTime);
+  
+  console.log(`Indexed ${docId} documents with ${Object.keys(documentIndex.wordToDocuments).length} unique terms`);
 }
 
-// Helper function to build conversation context
-function buildConversationContext(callSid) {
-    if (callSid && conversation_history[callSid]) {
-        return conversation_history[callSid]
-            .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
-            .join('\n');
-    }
-    return '';
-}
-
-// Helper function to get the signed URL from ElevenLabs API
-async function getSignedUrlFromElevenLabs() {
-    const signedUrlResponse = await axios.get(
-        `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
-        {
-            headers: {
-                'xi-api-key': ELEVENLABS_API_KEY,
-                'Content-Type': 'application/json'
-            }
-        }
-    );
-
-    if (!signedUrlResponse.data || !signedUrlResponse.data.signed_url) {
-        throw new Error('Failed to get signed URL from ElevenLabs');
-    }
-
-    return signedUrlResponse.data.signed_url;
-}
-
-// Helper function to send user input to ElevenLabs API
-async function sendUserInputToElevenLabs(signedUrl, userInput, conversationContext) {
-    return await axios.post(
-        signedUrl,
-        {
-            text: userInput,
-            context: conversationContext,
-            audio_enabled: true
-        },
-        {
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            responseType: 'arraybuffer' // Important: We expect binary audio data
-        }
-    );
-}
-
-// Helper function to save the audio response to a file
-function saveAudioResponse(audioData, callSid) {
-    const tempDir = path.join(__dirname, 'temp');
-    if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    const audioFileName = `response_${callSid || 'web'}_${Date.now()}.mp3`;
-    const audioFilePath = path.join(tempDir, audioFileName);
-    fs.writeFileSync(audioFilePath, Buffer.from(audioData));
-
-    return { audioFilePath, audioFileName };
-}
-
-// Helper function to check if the response suggests an appointment
-function checkForAppointmentSuggestion(textResponse) {
-    const appointmentKeywords = ['schedule', 'appointment', 'meeting'];
-    return appointmentKeywords.some(keyword => textResponse.toLowerCase().includes(keyword));
-}
-
-// Helper function to log error details
-function logErrorDetails(error) {
-    if (error.response) {
-        console.error('Response status:', error.response.status);
-        console.error('Response headers:', error.response.headers);
-        if (error.response.data) {
-            if (typeof error.response.data === 'string') {
-                console.error('Response data:', error.response.data);
-            } else {
-                console.error('Binary response received');
-            }
-        }
-    }
-}
-
-// Helper function to track performance
-function trackPerformance(category, executionTime) {
-    if (!performanceMetrics[category]) {
-        performanceMetrics[category] = [];
-    }
-    performanceMetrics[category].push(executionTime);
-
-    if (performanceMetrics[category].length > 100) {
-        performanceMetrics[category].shift();
-    }
-
-    const avg = performanceMetrics[category].reduce((sum, time) => sum + time, 0) /
-        performanceMetrics[category].length;
-
-    console.log(`[PERFORMANCE] ${category}: ${executionTime.toFixed(2)}ms (Avg: ${avg.toFixed(2)}ms)`);
-}
-
-// Load and index document data (no placeholders - you'll need to fill in the actual file loading/parsing)
-async function loadAndIndexDocuments() {
-    const startTime = performance.now();
-    console.log('Loading document data...');
-
-    const documentJsonPath = path.join(__dirname, 'document_contents.json'); // Path to your JSON file
-    let documentData = {};
-
-    try {
-        if (fs.existsSync(documentJsonPath)) {
-            documentData = JSON.parse(fs.readFileSync(documentJsonPath, 'utf8'));
-            console.log(`Loaded ${Object.keys(documentData).length} documents from JSON file`);
-        } else {
-            console.warn('Document JSON file not found. Running without document data.');
-        }
-    } catch (error) {
-        console.error('Error loading document JSON file:', error);
-    }
-
-    const loadingTime = performance.now() - startTime;
-    trackPerformance('documentLoading', loadingTime);
-
-    await buildInvertedIndex(documentData);
-    return documentData;
-}
-
-
-// Build inverted index from documents (no placeholders)
-async function buildInvertedIndex(documents) {
-    const startTime = performance.now();
-    console.log('Building inverted index...');
-
-    documentIndex = {
-        wordToDocuments: {},
-        documentContent: {},
-        documentNames: {},
-        lastUpdated: new Date()
-    };
-
-    let docId = 0;
-    for (const [filename, content] of Object.entries(documents)) {
-        documentIndex.documentContent[docId] = content;
-        documentIndex.documentNames[docId] = filename;
-
-        const words = content.toLowerCase()
-            .replace(/[^\w\s]/g, ' ')
-            .split(/\s+/)
-            .filter(word => word.length > 3 && !isStopWord(word));
-
-        const uniqueWords = [...new Set(words)];
-        for (const word of uniqueWords) {
-            if (!documentIndex.wordToDocuments[word]) {
-                documentIndex.wordToDocuments[word] = new Set();
-            }
-            documentIndex.wordToDocuments[word].add(docId);
-        }
-
-        docId++;
-    }
-
-    for (const word in documentIndex.wordToDocuments) {
-        documentIndex.wordToDocuments[word] = Array.from(documentIndex.wordToDocuments[word]);
-    }
-
-    const indexingTime = performance.now() - startTime;
-    trackPerformance('indexBuilding', indexingTime);
-
-    console.log(`Indexed ${docId} documents with ${Object.keys(documentIndex.wordToDocuments).length} unique terms`);
-}
-
-// Check if the index needs to be updated
+// Check if the index needs to be updated (more than 24 hours old)
 function shouldUpdateIndex() {
   if (!documentIndex.lastUpdated) return true;
   
@@ -413,294 +260,369 @@ function extractContexts(content, searchTerms) {
   return [...new Set(contexts)].slice(0, 5);
 }
 
-// Store conversation histories
-
+// Store conversation histories for both web chat and calls
+const conversationHistory = {};
 const webChatSessions = {};
-const CALENDLY_LINK = process.env.CALENDLY_LINK || "https://calendly.com/ali-shehroz-19991/30min"; // Replace with your Calendly link or put in env variable
+const CALENDLY_LINK = "https://calendly.com/ali-shehroz-19991/30min";
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Route to serve audio files (no placeholders)
-app.get('/audio/:filename', (req, res) => {
-    const filePath = path.join(__dirname, 'temp', req.params.filename);
-
-    if (fs.existsSync(filePath)) {
-        res.setHeader('Content-Type', 'audio/mpeg');
-        fs.createReadStream(filePath).pipe(res);
-    } else {
-        res.status(404).send('Audio file not found');
-    }
-});
-
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Web chat endpoint (no placeholders)
+// Enhanced web chat endpoint with session tracking
 app.post('/chat', async (req, res) => {
-    const requestStartTime = performance.now();
-
-    const userMessage = req.body.message;
-    const sessionId = req.body.sessionId || 'default_session';
-
-    if (!userMessage) {
-        return res.json({ response: "Hello, this is Mat from MultipleAI Solutions. How are you today?" });
+  const requestStartTime = performance.now();
+  
+  const userMessage = req.body.message;
+  const sessionId = req.body.sessionId || 'default_session';
+  
+  if (!userMessage) {
+    return res.json({ response: "Hello, this is Mat from MultipleAI Solutions. How are you today?" });
+  }
+  
+  // Initialize session if it doesn't exist
+  if (!webChatSessions[sessionId]) {
+    webChatSessions[sessionId] = [];
+  }
+  
+  try {
+    const aiResponse = await getAIResponse(userMessage, null, sessionId);
+    
+    // Handle Calendly link if appointment suggested
+    let responseHtml = aiResponse.response;
+    if (aiResponse.suggestedAppointment) {
+      responseHtml += `<br><br>You can <a href="${CALENDLY_LINK}" target="_blank">schedule a meeting here</a>.`;
     }
-
-    if (!webChatSessions[sessionId]) {
-        webChatSessions[sessionId] = [];
-    }
-
-    try {
-        const agentResponse = await callElevenLabsAgent(userMessage, sessionId);
-
-        let responseHtml = agentResponse.text;
-        if (agentResponse.suggestedAppointment) {
-            responseHtml += `<br><br>You can <a href="${CALENDLY_LINK}" target="_blank">schedule a meeting here</a>.`;
-        }
-
-        webChatSessions[sessionId].push({
-            user: userMessage,
-            assistant: agentResponse.text,
-            timestamp: Date.now()
-        });
-
-        if (webChatSessions[sessionId].length > 10) {
-            webChatSessions[sessionId] = webChatSessions[sessionId].slice(-10);
-        }
-
-        res.json({
-            response: responseHtml,
-            audioUrl: `/audio/${agentResponse.audioFileName}`,
-            suggestedAppointment: agentResponse.suggestedAppointment,
-            sessionId: sessionId
-        });
-
-        const totalTime = performance.now() - requestStartTime;
-        trackPerformance('totalRequestTime', totalTime);
-
-    } catch (error) {
-        console.error('Error in /chat:', error);
-        res.status(500).json({
-            response: "I apologize, but I'm experiencing technical difficulties. Could you please try again?",
-            suggestedAppointment: false
-        });
-    }
+    
+    res.json({ 
+      response: responseHtml, 
+      suggestedAppointment: aiResponse.suggestedAppointment,
+      sessionId: sessionId
+    });
+    
+    const totalTime = performance.now() - requestStartTime;
+    trackPerformance('totalRequestTime', totalTime);
+    
+  } catch (error) {
+    console.error('Error in /chat:', error);
+    res.status(500).json({ 
+      response: "I apologize, but I'm experiencing technical difficulties. Could you please try again?", 
+      suggestedAppointment: false 
+    });
+  }
 });
 
-// Initiate a call (no placeholders)
 app.post('/call', async (req, res) => {
-    const requestStartTime = performance.now();
+  const requestStartTime = performance.now();
+  
+  const phoneNumber = req.body.phone_number;
+  if (!phoneNumber) {
+    return res.status(400).json({ error: 'No phone number provided' });
+  }
 
-    const phoneNumber = req.body.phone_number;
-    if (!phoneNumber) {
-        return res.status(400).json({ error: 'No phone number provided' });
-    }
+  try {
+    const call = await twilioClient.calls.create({
+      to: phoneNumber,
+      from: twilioPhoneNumber,
+      url: `${req.protocol}://${req.get('host')}/twiml`,
+      machineDetection: 'Enable', // Detect answering machines
+      asyncAmd: true // Asynchronous answering machine detection
+    });
 
-    try {
-        const call = await twilioClient.calls.create({
-            to: phoneNumber,
-            from: twilioPhoneNumber,
-            url: `${req.protocol}://${req.get('host')}/twiml`, 
-            machineDetection: 'Enable',
-            asyncAmd: true
-        });
+    conversationHistory[call.sid] = [];
 
-        conversation_history[call.sid] = [];
-
-        res.json({ success: true, call_sid: call.sid });
-
-        const totalTime = performance.now() - requestStartTime;
-        trackPerformance('totalRequestTime', totalTime);
-
-    } catch (error) {
-        console.error('Error making call:', error);
-        res.status(500).json({ error: 'Failed to initiate call. Please try again.' });
-    }
+    res.json({ success: true, call_sid: call.sid });
+    
+    const totalTime = performance.now() - requestStartTime;
+    trackPerformance('totalRequestTime', totalTime);
+    
+  } catch (error) {
+    console.error('Error making call:', error);
+    res.status(500).json({ error: 'Failed to initiate call. Please try again.' });
+  }
 });
 
-app.post('/twiml', async (req, res) => {
-    const callSid = req.body.CallSid;
-    const machineResult = req.body.AnsweredBy;
-    const response = new twilio.twiml.VoiceResponse();
+app.post('/twiml', (req, res) => {
+  const response = new twilio.twiml.VoiceResponse();
+  const callSid = req.body.CallSid;
+  const machineResult = req.body.AnsweredBy;
 
-    try {
-        if (machineResult === 'machine_start') {
-            const voicemailMessage = 'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.';
-            const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid);
+  // If answering machine is detected, leave a voicemail
+  if (machineResult === 'machine_start') {
+    response.say(
+      { voice: 'Polly.Matthew-Neural' },
+      'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.'
+    );
+    response.hangup();
+    return res.type('text/xml').send(response.toString());
+  }
 
-            const audioUrl = `${req.protocol}://${req.get('host')}/audio/${voicemailResponse.audioFileName}`;
-            response.play(audioUrl);
-            response.hangup();
+  const gather = response.gather({
+    input: 'speech dtmf',
+    action: '/conversation',
+    method: 'POST',
+    timeout: 3,
+    speechTimeout: 'auto',
+    bargeIn: true,
+  });
 
-            return res.type('text/xml').send(response.toString()); // Return to stop further execution
-        }
+  gather.say(
+    { voice: 'Polly.Matthew-Neural' },
+    'Hello, this is Mat from MultipleAI Solutions. How are you today?'
+  );
+  
+  response.redirect('/conversation');
 
-        // Corrected greeting logic
-        const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
-        const greetingResponse = await callElevenLabsAgent(greeting, callSid); // Ensure we await the call
-
-        const gather = response.gather({
-            input: 'speech dtmf',
-            action: '/conversation',
-            method: 'POST',
-            timeout: 3,
-            speechTimeout: 'auto',
-            bargeIn: true,
-        });
-
-        // Corrected URL formatting
-        const audioUrl = `${req.protocol}://${req.get('host')}/audio/${greetingResponse.audioFileName}`;
-        gather.play(audioUrl);
-
-        // Save to conversation history
-        conversation_history[callSid] = [{
-            user: "",
-            assistant: greeting,
-            timestamp: Date.now()
-        }];
-
-        response.redirect('/conversation');
-
-        return res.type('text/xml').send(response.toString()); // Ensure return after sending response
-
-    } catch (error) {
-        console.error('Error in /twiml:', error);
-
-        // Fallback if ElevenLabs fails
-        const gather = response.gather({
-            input: 'speech dtmf',
-            action: '/conversation',
-            method: 'POST',
-            timeout: 3,
-            speechTimeout: 'auto',
-            bargeIn: true,
-        });
-
-        gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?');
-        response.redirect('/conversation');
-
-        return res.type('text/xml').send(response.toString()); // Ensure return after sending response
-    }
+  res.type('text/xml');
+  res.send(response.toString());
 });
 
-
-// Conversation handler
-// Conversation handler (Complete and Correct)
 app.post('/conversation', async (req, res) => {
-    const requestStartTime = performance.now();
-    const userSpeech = req.body.SpeechResult || '';
-    const callSid = req.body.CallSid; // Get callSid from Twilio
-    const digits = req.body.Digits || '';
+  const requestStartTime = performance.now();
+  
+  const userSpeech = req.body.SpeechResult || '';
+  const callSid = req.body.CallSid;
+  const digits = req.body.Digits || '';
 
-    const response = new twilio.twiml.VoiceResponse();
+  const response = new twilio.twiml.VoiceResponse();
 
-    if (callSid && !conversation_history[callSid]) {
-        conversation_history[callSid] = []; // Use conversation_history
-    }
+  if (callSid && !conversationHistory[callSid]) {
+    conversationHistory[callSid] = [];
+  }
 
-    if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-        try {
-            const goodbyeMessage = "Thank you for your time. Goodbye!";
-            const goodbyeResponse = await callElevenLabsAgent(goodbyeMessage, callSid);
-            const audioUrl = `${req.protocol}://${req.get('host')}/audio/${goodbyeResponse.audioFileName}`; // Correct URL
-            response.play(audioUrl);
-            response.hangup();
+  // Handle hang up
+  if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
+    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand youd like to stop. Could you let me know if theres something specific that bothering you or if you like to end the call?",');
+    response.hangup();
+    return res.type('text/xml').send(response.toString());
+  }
 
-            return res.type('text/xml').send(response.toString());
-        } catch (error) {
-            console.error('Error generating goodbye message:', error);
-            response.say("Thank you for your time. Goodbye!");
-            response.hangup();
-            return res.type('text/xml').send(response.toString());
-        }
-    }
+  try {
+    const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
+    const aiResponse = await getAIResponse(inputText, callSid);
 
-    try {
-        const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
+    // SMS handling for appointments
+    if (aiResponse.suggestedAppointment && callSid) {
+      try {
+        const call = await twilioClient.calls(callSid).fetch();
+        const phoneNumber = call.to;
 
-        const agentResponse = await callElevenLabsAgent(inputText, callSid); // Use callSid
-
-        conversation_history[callSid].push({ // Use callSid as the key
-            user: inputText,
-            assistant: agentResponse.text,
-            timestamp: Date.now()
+        await twilioClient.messages.create({
+          body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
+          from: twilioPhoneNumber,
+          to: phoneNumber,
         });
 
-        if (conversation_history[callSid].length > 10) {
-            conversation_history[callSid] = conversation_history[callSid].slice(-10);
-        }
-
-        const gather = response.gather({
-            input: 'speech dtmf',
-            action: '/conversation',
-            method: 'POST',
-            timeout: 5,
-            speechTimeout: 'auto',
-            bargeIn: true,
-        });
-
-        const audioUrl = `${req.protocol}://${req.get('host')}/audio/${agentResponse.audioFileName}`; // Correct URL
-        gather.play(audioUrl);
-
-        // SMS handling for appointments (remains the same)
-        if (agentResponse.suggestedAppointment && callSid) {
-            try {
-                const call = await twilioClient.calls(callSid).fetch();
-                const phoneNumber = call.to;
-
-                await twilioClient.messages.create({
-                    body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
-                    from: twilioPhoneNumber,
-                    to: phoneNumber,
-                });
-
-                console.log(`SMS sent to ${phoneNumber}`);
-
-                const smsNotification = "I've sent you an SMS with the booking link.";
-                const smsResponse = await callElevenLabsAgent(smsNotification, callSid);
-
-                const smsAudioUrl = `${req.protocol}://${req.get('host')}/audio/${smsResponse.audioFileName}`; // Correct URL
-                gather.play(smsAudioUrl);
-            } catch (error) {
-                console.error('Error sending SMS:', error);
-            }
-        }
-
-
-        response.pause({ length: 1 });
-
-        const finalGather = response.gather({
-            input: 'speech dtmf',
-            action: '/conversation',
-            method: 'POST',
-            timeout: 5,
-            speechTimeout: 'auto',
-            bargeIn: true,
-        });
-
-        res.type('text/xml');
-        res.send(response.toString());
-
-        console.log(`Call SID: ${callSid}`);
-        console.log(`User: ${inputText}`);
-        console.log(`Mat: ${agentResponse.text}`);
-
-        const totalTime = performance.now() - requestStartTime;
-        trackPerformance('totalRequestTime', totalTime);
-
-    } catch (error) {
-        console.error("Error in /conversation:", error);
-
-        response.say("I'm experiencing technical difficulties. Please try again later.");
-        response.redirect('/conversation');
-
-        res.type('text/xml');
-        res.send(response.toString());
+        console.log(`SMS sent to ${phoneNumber}`);
+        aiResponse.response += ` I've sent you an SMS with the booking link.`;
+      } catch (error) {
+        console.error('Error sending SMS:', error);
+      }
     }
+
+    const gather = response.gather({
+      input: 'speech dtmf',
+      action: '/conversation',
+      method: 'POST',
+      timeout: 5,
+      speechTimeout: 'auto',
+      bargeIn: true,
+    });
+
+    // *** KEY CHANGES START HERE ***
+    const currentMessage = inputText;  // Use inputText here (from Twilio)
+    const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ?
+                           conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
+
+    const messagePair = [
+      { role: "user", content: currentMessage },
+      { role: "assistant", content: previousResponse }
+    ];
+
+    // Clean response text (remove HTML tags)
+    const responseText = aiResponse.response.replace(/<[^>]*>/g, "");
+    gather.say({ voice: 'Polly.Matthew-Neural' }, responseText);
+
+    // Add a small pause to allow for natural conversation
+    response.pause({ length: 1 });
+
+    // Add a final gather to ensure we catch the user's response
+    const finalGather = response.gather({
+      input: 'speech dtmf',
+      action: '/conversation',
+      method: 'POST',
+      timeout: 5,
+      speechTimeout: 'auto',
+      bargeIn: true,
+    });
+
+    res.type('text/xml');
+    res.send(response.toString());
+
+    // Log conversation for debugging
+    console.log(`Call SID: ${callSid}`);
+    console.log(`User: ${inputText}`);
+    console.log(`Mat: ${responseText}`);
+    
+    const totalTime = performance.now() - requestStartTime;
+    trackPerformance('totalRequestTime', totalTime);
+
+  } catch (error) {
+    console.error("Error in /conversation:", error);
+    response.say({ voice: 'Polly.Matthew-Neural' }, "I'm experiencing technical difficulties. Please try again later.");
+    res.type('text/xml');
+    res.send(response.toString());
+  }
 });
+
+// Enhanced getAIResponse function with better document search using inverted index
+async function getAIResponse(userInput, callSid = null, webSessionId = null) {
+  const startTime = performance.now();
+  
+  // Get conversation history from appropriate source
+  let conversationContext = '';
+  if (callSid && conversationHistory[callSid]) {
+    conversationContext = conversationHistory[callSid]
+      .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
+      .join('\n');
+  } else if (webSessionId && webChatSessions[webSessionId]) {
+    conversationContext = webChatSessions[webSessionId]
+      .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
+      .join('\n');
+  }
+
+  // Perform document search using inverted index
+  const searchResults = searchDocumentsWithIndex(userInput);
+  
+  // Format search results for context
+  let relevantDocs = '';
+  for (const [filename, result] of Object.entries(searchResults)) {
+    relevantDocs += `\nFrom ${filename}:\n${result.contexts.join('\n')}\n`;
+  }
+
+  // Trim context if too long
+  if (relevantDocs.length > 1500) {
+    relevantDocs = relevantDocs.substring(0, 1500) + "... (additional relevant content omitted)";
+  }
+
+const prompt = `
+You are Mat, a friendly professional from MultipleAI Solutions in Perth, Australia. You are a human representative, NOT an AI.
+
+CRITICAL: Review the FULL conversation history before responding. NEVER repeat greetings or introduce yourself again if you've already done so.
+
+CONVERSATION HISTORY:
+${JSON.stringify(conversation_history)}
+
+CURRENT USER MESSAGE:
+${userInput}
+
+RULES:
+1. IF THIS IS YOUR FIRST MESSAGE:
+   - Start with warm greeting and 3-4 sentences of genuine ice breaker conversation
+   - Example: "Hi there! This is Mat from MultipleAI Solutions. Beautiful day in Perth today! Have you been enjoying the sunshine? I managed to get out for a bike ride this morning before work."
+
+2. FOR ALL SUBSEQUENT MESSAGES:
+   - NEVER introduce yourself again or repeat greetings
+   - Continue the conversation naturally based on context
+   - Respond directly to what the user just said
+
+3. BUSINESS DISCUSSION:
+   - Only after establishing rapport, discuss business needs
+   - "The reason I'm calling is to learn about your business needs..."
+
+4. MAINTAIN CONTEXT AWARENESS:
+   - If user mentions something confusing, politely ask for clarification
+   - Never pretend you discussed something you didn't
+
+5. BOOKING MEETINGS:
+   - If customer shows interest, suggest scheduling a meeting
+   - Add [Appointment Suggested] tag if appropriate
+
+SAMPLE CORRECT FLOW:
+--- First interaction ---
+Mat: "Hi there! This is Mat from MultipleAI Solutions. How are you doing today? We've had amazing weather here in Perth this week. I've been trying to enjoy it before the rain comes back this weekend."
+
+--- Second interaction ---
+User: "I'm doing fine, thanks. What do you want?"
+Mat: "Glad to hear you're doing well. I'm calling to learn a bit more about your business and see if there are any areas where MultipleAI Solutions might be able to help you out. Could you tell me a little about what your company does?"
+
+--- Third interaction ---
+User: "We're in manufacturing. What do you offer?"
+Mat: "Thanks for sharing that. For manufacturing businesses, we've developed AI solutions that optimize production schedules, predict maintenance needs, and improve quality control. These typically reduce downtime by 15-20%. Would you be interested in learning more about how this might benefit your specific manufacturing operations?"
+
+IMPORTANT:
+- Keep responses conversational and professional
+- Never say "As an AI" or mention being an assistant
+`;
+  try {
+    console.time('AI Response Time');
+    const aiStartTime = performance.now();
+    
+    const openaiResponse = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo', // Or your preferred model
+      messages: [
+        { role: 'system', content: prompt },
+        { role: 'user', content: userInput },
+      ],
+      max_tokens: 150, // Increased for more complete responses
+      temperature: 0.7,
+    });
+    
+    const aiTime = performance.now() - aiStartTime;
+    trackPerformance('aiResponse', aiTime);
+    console.timeEnd('AI Response Time');
+
+    let responseText = openaiResponse.choices[0].message.content.trim();
+    const suggestedAppointment = responseText.includes('[Appointment Suggested]');
+    responseText = responseText.replace('[Appointment Suggested]', '');
+    conversation_history.push({ user: userInput, assistant: responseText });
+    // Log response for debugging
+    console.log("🔹 AI Response:", responseText);
+
+    // Save to appropriate conversation history
+    if (callSid) {
+      conversationHistory[callSid].push({
+        user: userInput,
+        assistant: responseText,
+      });
+
+      // Limit conversation history size
+      if (conversationHistory[callSid].length > 10) {
+        conversationHistory[callSid] = conversationHistory[callSid].slice(-10);
+      }
+    } else if (webSessionId) {
+      webChatSessions[webSessionId].push({
+        user: userInput,
+        assistant: responseText,
+      });
+
+      // Limit web session history size
+      if (webChatSessions[webSessionId].length > 10) {
+        webChatSessions[webSessionId] = webChatSessions[webSessionId].slice(-10);
+      }
+    }
+    
+    const totalTime = performance.now() - startTime;
+    trackPerformance('getAIResponse', totalTime);
+
+    return { response: responseText, suggestedAppointment };
+  } catch (error) {
+    console.error('Error in getAIResponse:', error);
+    
+    const errorTime = performance.now() - startTime;
+    trackPerformance('getAIResponse', errorTime);
+    
+    return { 
+      response: "I apologize, but I'm having trouble processing your request. Could you please try again?", 
+      suggestedAppointment: false 
+    };
+  }
+}
+
 // Session cleanup - remove inactive web sessions after 30 minutes
 setInterval(() => {
   const now = Date.now();
@@ -712,31 +634,6 @@ setInterval(() => {
         console.log(`Removed inactive web session: ${sessionId}`);
       }
     }
-  }
-  
-  // Clean up temporary audio files older than 1 hour
-  const tempDir = path.join(__dirname, 'temp');
-  if (fs.existsSync(tempDir)) {
-    fs.readdir(tempDir, (err, files) => {
-      if (err) {
-        console.error('Error reading temp directory:', err);
-        return;
-      }
-      
-      files.forEach(file => {
-        const filePath = path.join(tempDir, file);
-        fs.stat(filePath, (err, stats) => {
-          if (err) return;
-          
-          const now = Date.now();
-          if (now - stats.mtimeMs > 60 * 60 * 1000) {
-            fs.unlink(filePath, err => {
-              if (err) console.error(`Error deleting temp file ${filePath}:`, err);
-            });
-          }
-        });
-      });
-    });
   }
 }, 10 * 60 * 1000); // Check every 10 minutes
 
@@ -757,63 +654,12 @@ async function initializeServer() {
     const PORT = process.env.PORT || 8000;
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
-      console.log(`Using ElevenLabs Agent ID: ${ELEVENLABS_AGENT_ID}`);
     });
   } catch (error) {
     console.error('Error initializing server:', error);
     process.exit(1);
   }
 }
-
-app.post('/twiml', async (req, res) => { // Make the route handler async
-    const callSid = req.body.CallSid;
-    const machineResult = req.body.AnsweredBy;
-    const response = new twilio.twiml.VoiceResponse();
-
-    try {
-        if (machineResult === 'machine_start') {
-            const voicemailMessage = 'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.';
-            const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid); // await is OK here
-            const audioUrl = `${req.protocol}://${req.get('host')}/audio/${voicemailResponse.audioFileName}`;
-            response.play(audioUrl);
-            response.hangup();
-            res.type('text/xml');
-            res.send(response.toString());
-            return; // Important: Stop further execution
-        }
-
-        const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
-        const greetingResponse = await callElevenLabsAgent(greeting, callSid); // await is OK here
-
-        conversation_history[callSid] = [{
-            user: "",
-            assistant: greeting,
-            timestamp: Date.now()
-        }];
-
-        const gather = response.gather({
-            input: 'speech dtmf',
-            action: '/conversation',
-            method: 'POST',
-            timeout: 3,
-            speechTimeout: 'auto',
-            bargeIn: true,
-        });
-
-        const audioUrl = `${req.protocol}://${req.get('host')}/audio/${greetingResponse.audioFileName}`;
-        gather.play(audioUrl);
-
-        res.type('text/xml'); // Send the TML response
-        res.send(response.toString()); // Send the TML response
-
-    } catch (error) {
-        console.error('Error in /twiml:', error);
-        const response = new twilio.twiml.VoiceResponse();
-        response.say("I'm sorry, there's been an error. Please try again later."); // Or a more informative message
-        res.type('text/xml');
-        res.send(response.toString());
-    }
-});
 
 // Start the server
 initializeServer();
