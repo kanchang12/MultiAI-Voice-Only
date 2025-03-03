@@ -463,11 +463,7 @@ app.post('/twiml', async (req, res) => {
         const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${greetingResponse.audioFileName}`;
         gather.play(audioUrl);
 
-        conversation_history[callSid] = [{
-            user: "",
-            assistant: greeting,
-            timestamp: Date.now()
-        }];
+        
 
         response.redirect('/conversation');
         res.type('text/xml');
@@ -550,7 +546,7 @@ app.post('/conversation', async (req, res) => {
 
         conversation_history[callSid] = [{  // Key change: Use callSid
             user: "",
-            assistant: greeting,
+            assistant: "Hello, this is Mat from MultipleAI Solutions. How are you today?",
             timestamp: Date.now()
         }];
 
@@ -559,7 +555,7 @@ app.post('/conversation', async (req, res) => {
         res.type('text/xml');
         res.send(response.toString());
     } catch (error) {
-        console.error('Error in /twiml:', error);
+        console.error('Error in /conversation:', error);
 
         const gather = response.gather({ // Fallback to Twilio TTS
             input: 'speech dtmf',
@@ -595,7 +591,7 @@ app.post('/conversation', async (req, res) => {
     gather.play(audioUrl);
     
     // Save to conversation history
-    conversationHistory[callSid] = [{
+    conversation_history[callSid] = [{
       user: "",
       assistant: greeting,
       timestamp: Date.now()
