@@ -65,7 +65,7 @@ function printPerformanceTable() {
     console.log("===============================\n");
 }
 
-setInterval(printPerformanceTable, 60000);
+//setInterval(printPerformanceTable, 60000);
 
 // ElevenLabs configuration (REPLACE with your actual values)
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
@@ -78,7 +78,7 @@ const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 const twilioClient = twilio(accountSid, authToken);
 
 // Initialize conversation_history CORRECTLY:
-const conversation_history = {};
+const conversation_history = conversation_history || {};
 
 // Configure OpenAI (REPLACE with your actual value)
 const openai = new OpenAI({
@@ -448,8 +448,11 @@ app.post('/twiml', async (req, res) => {
             return res.type('text/xml').send(response.toString());
         }
 
-        const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
-        const greetingResponse = await callElevenLabsAgent(greeting, callSid);
+        (async () => {
+            const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
+            const greetingResponse = await callElevenLabsAgent(greeting, callSid);
+        })();
+
 
         const gather = response.gather({
             input: 'speech dtmf',
@@ -460,7 +463,7 @@ app.post('/twiml', async (req, res) => {
             bargeIn: true,
         });
 
-        const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${greetingResponse.audioFileName}`;
+        const audioUrl = `${req.protocol}://${req.get('host')}/audio/${greetingResponse.audioFileName}`;
         gather.play(audioUrl);
 
         
@@ -489,90 +492,7 @@ app.post('/twiml', async (req, res) => {
     }
 });
 
-// Conversation handler (no placeholders)
-app.post('/conversation', async (req, res) => {
-    const requestStartTime = performance.now();
-    const userSpeech = req.body.SpeechResult || '';
-    const callSid = req.body.CallSid;
-    const digits = req.body.Digits || '';
 
-    const response = new twilio.twiml.VoiceResponse();
-
-    if (callSid && !conversation_history[callSid]) {
-        conversation_history[callSid] = [];
-    }
-
-    if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-        try {
-            const goodbyeMessage = "Thank you for your time. Goodbye!";
-            const goodbyeResponse = await callElevenLabsAgent(goodbyeMessage, callSid);
-            const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${goodbyeResponse.audioFileName}`;
-            response.play(audioUrl);
-            response.hangup();
-            return res.type('text/xml').send(response.toString());
-        } catch (error) {
-            console.error('Error generating goodbye message:', error);
-            response.say("Thank you for your time. Goodbye!");
-            response.hangup();
-            return res.type('text/xml').send(response.toString());
-        }
-    }
-
-    try {
-        const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
-        const agentResponse = await callElevenLabsAgent(inputText, callSid);
-
-        conversation_history[callSid].push({
-            user: inputText,
-            assistant: agentResponse.text,
-            timestamp: Date.now()
-        });
-
-        if (conversation_history[callSid].length > 10) {
-            conversation_history[callSid] = conversation_history[callSid].slice(-10);
-        }
-
-        const gather = response.gather({
-            input: 'speech dtmf',
-            action: '/conversation',
-            method: 'POST',
-            timeout: 5,
-            speechTimeout: 'auto',
-            bargeIn: true,
-        });
-
-        const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${agentResponse.audioFileName}`;
-        gather.play(audioUrl);
-
-        conversation_history[callSid] = [{  // Key change: Use callSid
-            user: "",
-            assistant: "Hello, this is Mat from MultipleAI Solutions. How are you today?",
-            timestamp: Date.now()
-        }];
-
-        response.redirect('/conversation');
-
-        res.type('text/xml');
-        res.send(response.toString());
-    } catch (error) {
-        console.error('Error in /conversation:', error);
-
-        const gather = response.gather({ // Fallback to Twilio TTS
-            input: 'speech dtmf',
-            action: '/conversation',
-            method: 'POST',
-            timeout: 3,
-            speechTimeout: 'auto',
-            bargeIn: true,
-        });
-
-        gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?');
-        response.redirect('/conversation');
-
-        res.type('text/xml');
-        res.send(response.toString());
-    }
-});
     // Initial greeting
     const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
     const greetingResponse = await callElevenLabsAgent(greeting, callSid);
