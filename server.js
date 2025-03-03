@@ -78,7 +78,7 @@ const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 const twilioClient = twilio(accountSid, authToken);
 
 // Initialize conversation_history CORRECTLY:
-const conversation_history = conversation_history || {};
+const conversation_history = {};
 
 // Configure OpenAI (REPLACE with your actual value)
 const openai = new OpenAI({
