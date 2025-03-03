@@ -105,8 +105,7 @@ async function callElevenLabsAgent(userInput, callSid) {
                 .join('\n');
         }
 
-        const response = await axios.post(
-            `https://api.elevenlabs.io/v1/agents/${ELEVENLABS_AGENT_ID}/chat`,
+        const response = await axios.post('https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID},
             {
                 text: userInput,
                 history: conversationContext,
