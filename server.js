@@ -442,17 +442,17 @@ app.post('/twiml', async (req, res) => {
         if (machineResult === 'machine_start') {
             const voicemailMessage = 'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.';
             const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid);
-            const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${voicemailResponse.audioFileName}`;
+
+            const audioUrl = `${req.protocol}://${req.get('host')}/audio/${voicemailResponse.audioFileName}`;
             response.play(audioUrl);
             response.hangup();
-            return res.type('text/xml').send(response.toString());
+
+            return res.type('text/xml').send(response.toString()); // Return to stop further execution
         }
 
-        (async () => {
-            const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
-            const greetingResponse = callElevenLabsAgent(greeting, callSid);
-        })();
-
+        // Corrected greeting logic
+        const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
+        const greetingResponse = await callElevenLabsAgent(greeting, callSid); // Ensure we await the call
 
         const gather = response.gather({
             input: 'speech dtmf',
@@ -463,18 +463,25 @@ app.post('/twiml', async (req, res) => {
             bargeIn: true,
         });
 
+        // Corrected URL formatting
         const audioUrl = `${req.protocol}://${req.get('host')}/audio/${greetingResponse.audioFileName}`;
         gather.play(audioUrl);
 
-        
+        // Save to conversation history
+        conversation_history[callSid] = [{
+            user: "",
+            assistant: greeting,
+            timestamp: Date.now()
+        }];
 
         response.redirect('/conversation');
-        res.type('text/xml');
-        res.send(response.toString());
+
+        return res.type('text/xml').send(response.toString()); // Ensure return after sending response
 
     } catch (error) {
         console.error('Error in /twiml:', error);
 
+        // Fallback if ElevenLabs fails
         const gather = response.gather({
             input: 'speech dtmf',
             action: '/conversation',
@@ -487,10 +494,10 @@ app.post('/twiml', async (req, res) => {
         gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?');
         response.redirect('/conversation');
 
-        res.type('text/xml');
-        res.send(response.toString());
+        return res.type('text/xml').send(response.toString()); // Ensure return after sending response
     }
 });
+
 
 
     // Initial greeting
