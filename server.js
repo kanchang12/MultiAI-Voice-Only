@@ -7,6 +7,7 @@ const fs = require('fs');
 const axios = require('axios');
 const { performance } = require('perf_hooks');
 const Table = require('cli-table3');
+const { Conversation } = require('@11labs/client');
 
 const app = express();
 
@@ -93,67 +94,33 @@ let documentIndex = {
     lastUpdated: null
 };
 
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { performance } = require('perf_hooks');
+
 // Function to interact with ElevenLabs Agents API
 async function callElevenLabsAgent(userInput, callSid) {
     const startTime = performance.now();
 
     try {
-        // Build conversation context from history if available
-        let conversationContext = '';
-        if (callSid && conversation_history[callSid]) {
-            conversationContext = conversation_history[callSid]
-                .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
-                .join('\n');
-        }
+        // Step 1: Build conversation context from history if available
+        const conversationContext = buildConversationContext(callSid);
 
-        // Step 1: Get the signed URL first
-        const signedUrlResponse = await axios.get(
-            `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
-            {
-                headers: {
-                    'xi-api-key': ELEVENLABS_API_KEY,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
+        // Step 2: Get the signed URL from ElevenLabs API
+        const signedUrl = await getSignedUrlFromElevenLabs();
 
-        if (!signedUrlResponse.data || !signedUrlResponse.data.signed_url) {
-            throw new Error('Failed to get signed URL from ElevenLabs');
-        }
+        // Step 3: Use the signed URL to send user input and get the agent's response
+        const agentResponse = await sendUserInputToElevenLabs(signedUrl, userInput, conversationContext);
 
-        const signedUrl = signedUrlResponse.data.signed_url;
-
-        // Step 2: Use the signed URL to make the actual request with user input
-        const agentResponse = await axios.post(
-            signedUrl,
-            {
-                text: userInput,
-                context: conversationContext,
-                audio_enabled: true
-            },
-            {
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                responseType: 'arraybuffer' // Important: We expect binary audio data
-            }
-        );
-
-        // Get the text response from headers
+        // Step 4: Extract the text response from headers
         const textResponse = agentResponse.headers['x-elevenlabs-agent-response'] ||
             "I'm sorry, I couldn't process your request at this time.";
 
-        // Create a directory for temporary audio files if it doesn't exist
-        const tempDir = path.join(__dirname, 'temp');
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
+        // Step 5: Save the audio response to a file
+        const { audioFilePath, audioFileName } = saveAudioResponse(agentResponse.data, callSid);
 
-        // Save the audio response to a file
-        const audioFileName = `response_${callSid || 'web'}_${Date.now()}.mp3`;
-        const audioFilePath = path.join(tempDir, audioFileName);
-        fs.writeFileSync(audioFilePath, Buffer.from(agentResponse.data));
-
+        // Step 6: Track performance and return the response
         const executionTime = performance.now() - startTime;
         trackPerformance('elevenLabsGeneration', executionTime);
 
@@ -161,27 +128,16 @@ async function callElevenLabsAgent(userInput, callSid) {
             text: textResponse,
             audioPath: audioFilePath,
             audioFileName: audioFileName,
-            suggestedAppointment: textResponse.toLowerCase().includes('schedule') ||
-                textResponse.toLowerCase().includes('appointment') ||
-                textResponse.toLowerCase().includes('meeting')
+            suggestedAppointment: checkForAppointmentSuggestion(textResponse)
         };
     } catch (error) {
         console.error('Error with ElevenLabs agent:', error.message);
-        if (error.response) {
-            console.error('Response status:', error.response.status);
-            console.error('Response headers:', error.response.headers);
-            if (error.response.data) {
-                // Handle binary data or try to parse it
-                if (typeof error.response.data === 'string') {
-                    console.error('Response data:', error.response.data);
-                } else {
-                    console.error('Binary response received');
-                }
-            }
-        }
+        logErrorDetails(error);
+
+        // Track performance even in case of error
         const executionTime = performance.now() - startTime;
         trackPerformance('elevenLabsGeneration', executionTime);
-        
+
         // Return a fallback response
         return {
             text: "I apologize, but I'm experiencing technical difficulties connecting to the voice service. Could you please try again?",
@@ -192,6 +148,104 @@ async function callElevenLabsAgent(userInput, callSid) {
     }
 }
 
+// Helper function to build conversation context
+function buildConversationContext(callSid) {
+    if (callSid && conversation_history[callSid]) {
+        return conversation_history[callSid]
+            .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
+            .join('\n');
+    }
+    return '';
+}
+
+// Helper function to get the signed URL from ElevenLabs API
+async function getSignedUrlFromElevenLabs() {
+    const signedUrlResponse = await axios.get(
+        `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
+        {
+            headers: {
+                'xi-api-key': ELEVENLABS_API_KEY,
+                'Content-Type': 'application/json'
+            }
+        }
+    );
+
+    if (!signedUrlResponse.data || !signedUrlResponse.data.signed_url) {
+        throw new Error('Failed to get signed URL from ElevenLabs');
+    }
+
+    return signedUrlResponse.data.signed_url;
+}
+
+// Helper function to send user input to ElevenLabs API
+async function sendUserInputToElevenLabs(signedUrl, userInput, conversationContext) {
+    return await axios.post(
+        signedUrl,
+        {
+            text: userInput,
+            context: conversationContext,
+            audio_enabled: true
+        },
+        {
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            responseType: 'arraybuffer' // Important: We expect binary audio data
+        }
+    );
+}
+
+// Helper function to save the audio response to a file
+function saveAudioResponse(audioData, callSid) {
+    const tempDir = path.join(__dirname, 'temp');
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const audioFileName = `response_${callSid || 'web'}_${Date.now()}.mp3`;
+    const audioFilePath = path.join(tempDir, audioFileName);
+    fs.writeFileSync(audioFilePath, Buffer.from(audioData));
+
+    return { audioFilePath, audioFileName };
+}
+
+// Helper function to check if the response suggests an appointment
+function checkForAppointmentSuggestion(textResponse) {
+    const appointmentKeywords = ['schedule', 'appointment', 'meeting'];
+    return appointmentKeywords.some(keyword => textResponse.toLowerCase().includes(keyword));
+}
+
+// Helper function to log error details
+function logErrorDetails(error) {
+    if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response headers:', error.response.headers);
+        if (error.response.data) {
+            if (typeof error.response.data === 'string') {
+                console.error('Response data:', error.response.data);
+            } else {
+                console.error('Binary response received');
+            }
+        }
+    }
+}
+
+// Helper function to track performance
+function trackPerformance(category, executionTime) {
+    if (!performanceMetrics[category]) {
+        performanceMetrics[category] = [];
+    }
+    performanceMetrics[category].push(executionTime);
+
+    if (performanceMetrics[category].length > 100) {
+        performanceMetrics[category].shift();
+    }
+
+    const avg = performanceMetrics[category].reduce((sum, time) => sum + time, 0) /
+        performanceMetrics[category].length;
+
+    console.log(`[PERFORMANCE] ${category}: ${executionTime.toFixed(2)}ms (Avg: ${avg.toFixed(2)}ms)`);
+}
 
 // Load and index document data (no placeholders - you'll need to fill in the actual file loading/parsing)
 async function loadAndIndexDocuments() {
