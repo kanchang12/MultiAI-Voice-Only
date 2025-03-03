@@ -93,11 +93,12 @@ let documentIndex = {
     lastUpdated: null
 };
 
-// Function to interact with ElevenLabs Agents API (no placeholders)
+// Function to interact with ElevenLabs Agents API
 async function callElevenLabsAgent(userInput, callSid) {
     const startTime = performance.now();
 
     try {
+        // Build conversation context from history if available
         let conversationContext = '';
         if (callSid && conversation_history[callSid]) {
             conversationContext = conversation_history[callSid]
@@ -105,36 +106,53 @@ async function callElevenLabsAgent(userInput, callSid) {
                 .join('\n');
         }
 
-    const response = await axios.get(
-      `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${process.env.ELEVENLABS_AGENT_ID}`,  // Correct template string
-      {
-        headers: {
-          'xi-api-key': ELEVENLABS_API_KEY,  // Use the API key
-          'Content-Type': 'application/json'
-        },
-        responseType: 'json',  // Expect JSON response since the signed URL is typically returned in JSON
-      }
-    );
-    
-    if (response.data && response.data.signed_url) {
-      const signedUrl = response.data.signed_url; // Extract the signed URL
-      return signedUrl;  // Return or use the signed URL
-    } else {
-      throw new Error('Failed to get signed URL');
-    }
+        // Step 1: Get the signed URL first
+        const signedUrlResponse = await axios.get(
+            `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
+            {
+                headers: {
+                    'xi-api-key': ELEVENLABS_API_KEY,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
 
+        if (!signedUrlResponse.data || !signedUrlResponse.data.signed_url) {
+            throw new Error('Failed to get signed URL from ElevenLabs');
+        }
 
+        const signedUrl = signedUrlResponse.data.signed_url;
+
+        // Step 2: Use the signed URL to make the actual request with user input
+        const agentResponse = await axios.post(
+            signedUrl,
+            {
+                text: userInput,
+                context: conversationContext,
+                audio_enabled: true
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                responseType: 'arraybuffer' // Important: We expect binary audio data
+            }
+        );
+
+        // Get the text response from headers
+        const textResponse = agentResponse.headers['x-elevenlabs-agent-response'] ||
+            "I'm sorry, I couldn't process your request at this time.";
+
+        // Create a directory for temporary audio files if it doesn't exist
         const tempDir = path.join(__dirname, 'temp');
         if (!fs.existsSync(tempDir)) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
 
+        // Save the audio response to a file
         const audioFileName = `response_${callSid || 'web'}_${Date.now()}.mp3`;
         const audioFilePath = path.join(tempDir, audioFileName);
-        fs.writeFileSync(audioFilePath, response.data);
-
-        const textResponse = response.headers['x-elevenlabs-agent-response'] ||
-            "I'm sorry, I couldn't process your request at this time.";
+        fs.writeFileSync(audioFilePath, Buffer.from(agentResponse.data));
 
         const executionTime = performance.now() - startTime;
         trackPerformance('elevenLabsGeneration', executionTime);
@@ -148,12 +166,32 @@ async function callElevenLabsAgent(userInput, callSid) {
                 textResponse.toLowerCase().includes('meeting')
         };
     } catch (error) {
-        console.error('Error with ElevenLabs agent:', error);
+        console.error('Error with ElevenLabs agent:', error.message);
+        if (error.response) {
+            console.error('Response status:', error.response.status);
+            console.error('Response headers:', error.response.headers);
+            if (error.response.data) {
+                // Handle binary data or try to parse it
+                if (typeof error.response.data === 'string') {
+                    console.error('Response data:', error.response.data);
+                } else {
+                    console.error('Binary response received');
+                }
+            }
+        }
         const executionTime = performance.now() - startTime;
         trackPerformance('elevenLabsGeneration', executionTime);
-        throw error;
+        
+        // Return a fallback response
+        return {
+            text: "I apologize, but I'm experiencing technical difficulties connecting to the voice service. Could you please try again?",
+            audioPath: null,
+            audioFileName: null,
+            suggestedAppointment: false
+        };
     }
 }
+
 
 // Load and index document data (no placeholders - you'll need to fill in the actual file loading/parsing)
 async function loadAndIndexDocuments() {
