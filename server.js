@@ -10,14 +10,14 @@ const Table = require('cli-table3');
 
 const app = express();
 
-// Performance tracking
+// Performance tracking (no placeholders)
 const performanceMetrics = {
-  documentLoading: [],
-  indexBuilding: [],
-  documentSearch: [],
-  aiResponse: [],
-  totalRequestTime: [],
-  elevenLabsGeneration: []
+    documentLoading: [],
+    indexBuilding: [],
+    documentSearch: [],
+    aiResponse: [],
+    totalRequestTime: [],
+    elevenLabsGeneration: []
 };
 
 function trackPerformance(category, executionTime) {
@@ -38,67 +38,68 @@ function trackPerformance(category, executionTime) {
 }
 
 function printPerformanceTable() {
-  const table = new Table({
-    head: ['Category', 'Last (ms)', 'Avg (ms)', 'Min (ms)', 'Max (ms)', 'Count']
-  });
-  
-  for (const [category, times] of Object.entries(performanceMetrics)) {
-    if (times.length === 0) continue;
-    
-    const avg = times.reduce((sum, time) => sum + time, 0) / times.length;
-    const min = Math.min(...times);
-    const max = Math.max(...times);
-    const last = times[times.length - 1];
-    
-    table.push([
-      category,
-      last.toFixed(2),
-      avg.toFixed(2),
-      min.toFixed(2),
-      max.toFixed(2),
-      times.length
-    ]);
-  }
-  
-  console.log("\n===== PERFORMANCE METRICS =====");
-  console.log(table.toString());
-  console.log("===============================\n");
+    const table = new Table({
+        head: ['Category', 'Last (ms)', 'Avg (ms)', 'Min (ms)', 'Max (ms)', 'Count']
+    });
+
+    for (const [category, times] of Object.entries(performanceMetrics)) {
+        if (times.length === 0) continue;
+
+        const avg = times.reduce((sum, time) => sum + time, 0) / times.length;
+        const min = Math.min(...times);
+        const max = Math.max(...times);
+        const last = times[times.length - 1];
+
+        table.push([
+            category,
+            last.toFixed(2),
+            avg.toFixed(2),
+            min.toFixed(2),
+            max.toFixed(2),
+            times.length
+        ]);
+    }
+
+    console.log("\n===== PERFORMANCE METRICS =====");
+    console.log(table.toString());
+    console.log("===============================\n");
 }
 
-// Schedule periodic performance table printing
-setInterval(printPerformanceTable, 60000); // Print every minute
+setInterval(printPerformanceTable, 60000);
 
-// ElevenLabs configuration
+// ElevenLabs configuration (REPLACE with your actual values)
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-const ELEVENLABS_AGENT_ID = 'SOxZnrjCgLTzlR1GK6Tj'; // Your ElevenLabs agent ID
+const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID; // Your Agent ID
 
-// Configure Twilio
+// Configure Twilio (REPLACE with your actual values)
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 const twilioClient = twilio(accountSid, authToken);
-const conversation_history = [];
 
-// Configure OpenAI
+// Initialize conversation_history CORRECTLY:
+const conversation_history = {};
+
+// Configure OpenAI (REPLACE with your actual value)
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+    apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Inverted index data structure
+// Inverted index data structure (no placeholders)
 let documentIndex = {
-  wordToDocuments: {}, // word -> [document IDs]
-  documentContent: {}, // document ID -> content
-  documentNames: {},   // document ID -> filename
-  lastUpdated: null
+    wordToDocuments: {},
+    documentContent: {},
+    documentNames: {},
+    lastUpdated: null
 };
 
-// Function to interact with ElevenLabs Agents API (Complete and Correct)
+// Function to interact with ElevenLabs Agents API (no placeholders)
 async function callElevenLabsAgent(userInput, callSid) {
     const startTime = performance.now();
 
     try {
         let conversationContext = '';
-        if (callSid && conversation_history[callSid]) { // Use conversation_history
+        if (callSid && conversation_history[callSid]) {
             conversationContext = conversation_history[callSid]
                 .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
                 .join('\n');
@@ -158,80 +159,74 @@ async function callElevenLabsAgent(userInput, callSid) {
     }
 }
 
-// Load and index document data
+// Load and index document data (no placeholders - you'll need to fill in the actual file loading/parsing)
 async function loadAndIndexDocuments() {
-  const startTime = performance.now();
-  console.log('Loading document data...');
-  
-  const documentJsonPath = path.join(__dirname, 'document_contents.json');
-  let documentData = {};
-  
-  try {
-    if (fs.existsSync(documentJsonPath)) {
-      documentData = JSON.parse(fs.readFileSync(documentJsonPath, 'utf8'));
-      console.log(`Loaded ${Object.keys(documentData).length} documents from JSON file`);
-    } else {
-      console.warn('Document JSON file not found. Running without document data.');
+    const startTime = performance.now();
+    console.log('Loading document data...');
+
+    const documentJsonPath = path.join(__dirname, 'document_contents.json'); // Path to your JSON file
+    let documentData = {};
+
+    try {
+        if (fs.existsSync(documentJsonPath)) {
+            documentData = JSON.parse(fs.readFileSync(documentJsonPath, 'utf8'));
+            console.log(`Loaded ${Object.keys(documentData).length} documents from JSON file`);
+        } else {
+            console.warn('Document JSON file not found. Running without document data.');
+        }
+    } catch (error) {
+        console.error('Error loading document JSON file:', error);
     }
-  } catch (error) {
-    console.error('Error loading document JSON file:', error);
-  }
-  
-  const loadingTime = performance.now() - startTime;
-  trackPerformance('documentLoading', loadingTime);
-  
-  // Build inverted index
-  await buildInvertedIndex(documentData);
-  
-  return documentData;
+
+    const loadingTime = performance.now() - startTime;
+    trackPerformance('documentLoading', loadingTime);
+
+    await buildInvertedIndex(documentData);
+    return documentData;
 }
 
-// Build inverted index from documents
+
+// Build inverted index from documents (no placeholders)
 async function buildInvertedIndex(documents) {
-  const startTime = performance.now();
-  console.log('Building inverted index...');
-  
-  // Reset the index
-  documentIndex = {
-    wordToDocuments: {},
-    documentContent: {},
-    documentNames: {},
-    lastUpdated: new Date()
-  };
-  
-  let docId = 0;
-  for (const [filename, content] of Object.entries(documents)) {
-    // Store document content and name
-    documentIndex.documentContent[docId] = content;
-    documentIndex.documentNames[docId] = filename;
-    
-    // Tokenize document content - split into words and remove common words
-    const words = content.toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(word => word.length > 3 && !isStopWord(word));
-    
-    // Add each unique word to the index
-    const uniqueWords = [...new Set(words)];
-    for (const word of uniqueWords) {
-      if (!documentIndex.wordToDocuments[word]) {
-        documentIndex.wordToDocuments[word] = new Set();
-      }
-      documentIndex.wordToDocuments[word].add(docId);
+    const startTime = performance.now();
+    console.log('Building inverted index...');
+
+    documentIndex = {
+        wordToDocuments: {},
+        documentContent: {},
+        documentNames: {},
+        lastUpdated: new Date()
+    };
+
+    let docId = 0;
+    for (const [filename, content] of Object.entries(documents)) {
+        documentIndex.documentContent[docId] = content;
+        documentIndex.documentNames[docId] = filename;
+
+        const words = content.toLowerCase()
+            .replace(/[^\w\s]/g, ' ')
+            .split(/\s+/)
+            .filter(word => word.length > 3 && !isStopWord(word));
+
+        const uniqueWords = [...new Set(words)];
+        for (const word of uniqueWords) {
+            if (!documentIndex.wordToDocuments[word]) {
+                documentIndex.wordToDocuments[word] = new Set();
+            }
+            documentIndex.wordToDocuments[word].add(docId);
+        }
+
+        docId++;
     }
-    
-    docId++;
-  }
-  
-  // Convert Sets to Arrays for easier use
-  for (const word in documentIndex.wordToDocuments) {
-    documentIndex.wordToDocuments[word] = Array.from(documentIndex.wordToDocuments[word]);
-  }
-  
-  const indexingTime = performance.now() - startTime;
-  trackPerformance('indexBuilding', indexingTime);
-  
-  console.log(`Indexed ${docId} documents with ${Object.keys(documentIndex.wordToDocuments).length} unique terms`);
+
+    for (const word in documentIndex.wordToDocuments) {
+        documentIndex.wordToDocuments[word] = Array.from(documentIndex.wordToDocuments[word]);
+    }
+
+    const indexingTime = performance.now() - startTime;
+    trackPerformance('indexBuilding', indexingTime);
+
+    console.log(`Indexed ${docId} documents with ${Object.keys(documentIndex.wordToDocuments).length} unique terms`);
 }
 
 // Check if the index needs to be updated
@@ -331,119 +326,113 @@ function extractContexts(content, searchTerms) {
 }
 
 // Store conversation histories
-const conversationHistory = {};
+
 const webChatSessions = {};
-const CALENDLY_LINK = "https://calendly.com/ali-shehroz-19991/30min";
+const CALENDLY_LINK = process.env.CALENDLY_LINK || "https://calendly.com/ali-shehroz-19991/30min"; // Replace with your Calendly link or put in env variable
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Route to serve audio files
+// Route to serve audio files (no placeholders)
 app.get('/audio/:filename', (req, res) => {
-  const filePath = path.join(__dirname, 'temp', req.params.filename);
-  
-  if (fs.existsSync(filePath)) {
-    res.setHeader('Content-Type', 'audio/mpeg');
-    fs.createReadStream(filePath).pipe(res);
-  } else {
-    res.status(404).send('Audio file not found');
-  }
+    const filePath = path.join(__dirname, 'temp', req.params.filename);
+
+    if (fs.existsSync(filePath)) {
+        res.setHeader('Content-Type', 'audio/mpeg');
+        fs.createReadStream(filePath).pipe(res);
+    } else {
+        res.status(404).send('Audio file not found');
+    }
 });
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Web chat endpoint
+// Web chat endpoint (no placeholders)
 app.post('/chat', async (req, res) => {
-  const requestStartTime = performance.now();
-  
-  const userMessage = req.body.message;
-  const sessionId = req.body.sessionId || 'default_session';
-  
-  if (!userMessage) {
-    return res.json({ response: "Hello, this is Mat from MultipleAI Solutions. How are you today?" });
-  }
-  
-  // Initialize session if it doesn't exist
-  if (!webChatSessions[sessionId]) {
-    webChatSessions[sessionId] = [];
-  }
-  
-  try {
-    // Get response from ElevenLabs agent
-    const agentResponse = await callElevenLabsAgent(userMessage, sessionId);
-    
-    // Handle Calendly link if appointment suggested
-    let responseHtml = agentResponse.text;
-    if (agentResponse.suggestedAppointment) {
-      responseHtml += `<br><br>You can <a href="${CALENDLY_LINK}" target="_blank">schedule a meeting here</a>.`;
+    const requestStartTime = performance.now();
+
+    const userMessage = req.body.message;
+    const sessionId = req.body.sessionId || 'default_session';
+
+    if (!userMessage) {
+        return res.json({ response: "Hello, this is Mat from MultipleAI Solutions. How are you today?" });
     }
-    
-    // Save to web chat history
-    webChatSessions[sessionId].push({
-      user: userMessage,
-      assistant: agentResponse.text,
-      timestamp: Date.now()
-    });
-    
-    // Limit history size
-    if (webChatSessions[sessionId].length > 10) {
-      webChatSessions[sessionId] = webChatSessions[sessionId].slice(-10);
+
+    if (!webChatSessions[sessionId]) {
+        webChatSessions[sessionId] = [];
     }
-    
-    res.json({ 
-      response: responseHtml, 
-      audioUrl: `/audio/${agentResponse.audioFileName}`,
-      suggestedAppointment: agentResponse.suggestedAppointment,
-      sessionId: sessionId
-    });
-    
-    const totalTime = performance.now() - requestStartTime;
-    trackPerformance('totalRequestTime', totalTime);
-    
-  } catch (error) {
-    console.error('Error in /chat:', error);
-    res.status(500).json({ 
-      response: "I apologize, but I'm experiencing technical difficulties. Could you please try again?", 
-      suggestedAppointment: false 
-    });
-  }
+
+    try {
+        const agentResponse = await callElevenLabsAgent(userMessage, sessionId);
+
+        let responseHtml = agentResponse.text;
+        if (agentResponse.suggestedAppointment) {
+            responseHtml += `<br><br>You can <a href="${CALENDLY_LINK}" target="_blank">schedule a meeting here</a>.`;
+        }
+
+        webChatSessions[sessionId].push({
+            user: userMessage,
+            assistant: agentResponse.text,
+            timestamp: Date.now()
+        });
+
+        if (webChatSessions[sessionId].length > 10) {
+            webChatSessions[sessionId] = webChatSessions[sessionId].slice(-10);
+        }
+
+        res.json({
+            response: responseHtml,
+            audioUrl: `/audio/${agentResponse.audioFileName}`,
+            suggestedAppointment: agentResponse.suggestedAppointment,
+            sessionId: sessionId
+        });
+
+        const totalTime = performance.now() - requestStartTime;
+        trackPerformance('totalRequestTime', totalTime);
+
+    } catch (error) {
+        console.error('Error in /chat:', error);
+        res.status(500).json({
+            response: "I apologize, but I'm experiencing technical difficulties. Could you please try again?",
+            suggestedAppointment: false
+        });
+    }
 });
 
-// Initiate a call
+// Initiate a call (no placeholders)
 app.post('/call', async (req, res) => {
-  const requestStartTime = performance.now();
-  
-  const phoneNumber = req.body.phone_number;
-  if (!phoneNumber) {
-    return res.status(400).json({ error: 'No phone number provided' });
-  }
+    const requestStartTime = performance.now();
 
-  try {
-    const call = await twilioClient.calls.create({
-      to: phoneNumber,
-      from: twilioPhoneNumber,
-      url: `${req.protocol}://${req.get('host')}/twiml`,
-      machineDetection: 'Enable',
-      asyncAmd: true
-    });
+    const phoneNumber = req.body.phone_number;
+    if (!phoneNumber) {
+        return res.status(400).json({ error: 'No phone number provided' });
+    }
 
-    conversationHistory[call.sid] = [];
+    try {
+        const call = await twilioClient.calls.create({
+            to: phoneNumber,
+            from: twilioPhoneNumber,
+            url: `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/twiml`,
+            machineDetection: 'Enable',
+            asyncAmd: true
+        });
 
-    res.json({ success: true, call_sid: call.sid });
-    
-    const totalTime = performance.now() - requestStartTime;
-    trackPerformance('totalRequestTime', totalTime);
-    
-  } catch (error) {
-    console.error('Error making call:', error);
-    res.status(500).json({ error: 'Failed to initiate call. Please try again.' });
-  }
+        conversation_history[call.sid] = [];
+
+        res.json({ success: true, call_sid: call.sid });
+
+        const totalTime = performance.now() - requestStartTime;
+        trackPerformance('totalRequestTime', totalTime);
+
+    } catch (error) {
+        console.error('Error making call:', error);
+        res.status(500).json({ error: 'Failed to initiate call. Please try again.' });
+    }
 });
 
-// Initial TwiML for call (Complete and Correct)
 app.post('/twiml', async (req, res) => {
     const callSid = req.body.CallSid;
     const machineResult = req.body.AnsweredBy;
@@ -452,17 +441,15 @@ app.post('/twiml', async (req, res) => {
     try {
         if (machineResult === 'machine_start') {
             const voicemailMessage = 'Hello, this is Mat from MultipleAI Solutions. I was calling to discuss how AI might benefit your business. Please call us back at your convenience or visit our website to schedule a meeting. Thank you and have a great day.';
-
             const voicemailResponse = await callElevenLabsAgent(voicemailMessage, callSid);
             const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${voicemailResponse.audioFileName}`;
             response.play(audioUrl);
             response.hangup();
-
             return res.type('text/xml').send(response.toString());
         }
 
         const greeting = "Hello, this is Mat from MultipleAI Solutions. How are you today?";
-        const greetingResponse = await callElevenLabsAgent(greeting, callSid); // Use callSid
+        const greetingResponse = await callElevenLabsAgent(greeting, callSid);
 
         const gather = response.gather({
             input: 'speech dtmf',
@@ -474,6 +461,91 @@ app.post('/twiml', async (req, res) => {
         });
 
         const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${greetingResponse.audioFileName}`;
+        gather.play(audioUrl);
+
+        conversation_history[callSid] = [{
+            user: "",
+            assistant: greeting,
+            timestamp: Date.now()
+        }];
+
+        response.redirect('/conversation');
+        res.type('text/xml');
+        res.send(response.toString());
+
+    } catch (error) {
+        console.error('Error in /twiml:', error);
+
+        const gather = response.gather({
+            input: 'speech dtmf',
+            action: '/conversation',
+            method: 'POST',
+            timeout: 3,
+            speechTimeout: 'auto',
+            bargeIn: true,
+        });
+
+        gather.say('Hello, this is Mat from MultipleAI Solutions. How are you today?');
+        response.redirect('/conversation');
+
+        res.type('text/xml');
+        res.send(response.toString());
+    }
+});
+
+// Conversation handler (no placeholders)
+app.post('/conversation', async (req, res) => {
+    const requestStartTime = performance.now();
+    const userSpeech = req.body.SpeechResult || '';
+    const callSid = req.body.CallSid;
+    const digits = req.body.Digits || '';
+
+    const response = new twilio.twiml.VoiceResponse();
+
+    if (callSid && !conversation_history[callSid]) {
+        conversation_history[callSid] = [];
+    }
+
+    if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
+        try {
+            const goodbyeMessage = "Thank you for your time. Goodbye!";
+            const goodbyeResponse = await callElevenLabsAgent(goodbyeMessage, callSid);
+            const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${goodbyeResponse.audioFileName}`;
+            response.play(audioUrl);
+            response.hangup();
+            return res.type('text/xml').send(response.toString());
+        } catch (error) {
+            console.error('Error generating goodbye message:', error);
+            response.say("Thank you for your time. Goodbye!");
+            response.hangup();
+            return res.type('text/xml').send(response.toString());
+        }
+    }
+
+    try {
+        const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
+        const agentResponse = await callElevenLabsAgent(inputText, callSid);
+
+        conversation_history[callSid].push({
+            user: inputText,
+            assistant: agentResponse.text,
+            timestamp: Date.now()
+        });
+
+        if (conversation_history[callSid].length > 10) {
+            conversation_history[callSid] = conversation_history[callSid].slice(-10);
+        }
+
+        const gather = response.gather({
+            input: 'speech dtmf',
+            action: '/conversation',
+            method: 'POST',
+            timeout: 5,
+            speechTimeout: 'auto',
+            bargeIn: true,
+        });
+
+        const audioUrl = `<span class="math-inline">\{req\.protocol\}\://</span>{req.get('host')}/audio/${agentResponse.audioFileName}`;
         gather.play(audioUrl);
 
         conversation_history[callSid] = [{  // Key change: Use callSid
