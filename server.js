@@ -383,29 +383,25 @@ app.post('/twiml', (req, res) => {
 
 app.post('/conversation', async (req, res) => {
   const requestStartTime = performance.now();
-  
   const userSpeech = req.body.SpeechResult || '';
   const callSid = req.body.CallSid;
   const digits = req.body.Digits || '';
-  
+
   const response = new twilio.twiml.VoiceResponse();
 
-if (!callSid) {
-  console.error("Missing CallSid in request");
-  response.say({ voice: 'Polly.Matthew-Neural' }, 
-    "I'm sorry, but I couldn't process your request. Please try again later.");
-  return res.type('text/xml').send(response.toString());
-}
+  if (!callSid) {
+    console.error("Missing CallSid in request");
+    response.say({ voice: 'Polly.Matthew-Neural' }, "I'm sorry, but I couldn't process your request. Please try again later.");
+    return res.type('text/xml').send(response.toString());
+  }
 
-// Ensure conversation history is initialized
-if (!conversationHistory[callSid]) {
-  conversationHistory[callSid] = [];
-}
+  if (!conversationHistory[callSid]) {
+    conversationHistory[callSid] = [];
+  }
 
-  // If user says "goodbye" or presses 9, end the call
+  // Handle call termination
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say({ voice: 'Polly.Matthew-Neural' }, 
-      "I understand you'd like to stop. Thank you for your time. Have a great day!");
+    response.say({ voice: 'Polly.Matthew-Neural' }, "I understand. Thank you for your time. Have a great day!");
     response.hangup();
     return res.type('text/xml').send(response.toString());
   }
@@ -415,34 +411,31 @@ if (!conversationHistory[callSid]) {
 
     // Ensure AI gets the correct prompt structure
     const conversationContext = conversationHistory[callSid].map(entry => `User: ${entry.user}\nMat: ${entry.assistant}`).join("\n");
-    
+
     const aiResponse = await getAIResponse(inputText, conversationContext, callSid);
 
     // Ensure conversation history tracking
     conversationHistory[callSid].push({ user: inputText, assistant: aiResponse.response });
 
-    // Remove repetitive greetings
+    // Prevent repeated greetings
     const previousResponse = conversationHistory[callSid].length > 1 ? conversationHistory[callSid][conversationHistory[callSid].length - 2].assistant : "";
-    const responseText = aiResponse.response.replace(/<[^>]*>/g, ""); // Remove any HTML-like tags
+    let responseText = aiResponse.response.replace(/<[^>]*>/g, "");
 
     if (/hi|hello|good (morning|afternoon|evening)/i.test(previousResponse)) {
-      aiResponse.response = aiResponse.response.replace(/Hi.*|Hello.*/i, "");
+      responseText = responseText.replace(/Hi.*|Hello.*/i, "");
     }
 
     // Speak AI response
-    response.say({ voice: 'Polly.Matthew-Neural' }, aiResponse.response);
+    response.say({ voice: 'Polly.Matthew-Neural', bargeIn: true }, responseText);
 
-    // Pause for interruption handling
-    response.pause({ length: 1 });
-
-    // Enable barge-in to allow interruption
+    // Add final gather to continue conversation with barge-in enabled
     const gather = response.gather({
       input: 'speech dtmf',
       action: '/conversation',
       method: 'POST',
       timeout: 5,
       speechTimeout: 'auto',
-      bargeIn: true, // Allows user to interrupt Mat
+      bargeIn: true,
     });
 
     gather.say({ voice: 'Polly.Matthew-Neural' }, "Go ahead, I'm listening.");
@@ -455,11 +448,11 @@ if (!conversationHistory[callSid]) {
     
   } catch (error) {
     console.error("Error in /conversation:", error);
-    response.say({ voice: 'Polly.Matthew-Neural' }, 
-      "I'm experiencing technical difficulties. Please try again later.");
+    response.say({ voice: 'Polly.Matthew-Neural' }, "I'm experiencing technical difficulties. Please try again later.");
     res.type('text/xml').send(response.toString());
   }
 });
+
 
 // Enhanced getAIResponse function with better document search using inverted index
 async function getAIResponse(userInput, callSid = null, webSessionId = null) {
