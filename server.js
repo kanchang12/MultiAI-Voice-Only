@@ -360,10 +360,27 @@ app.post('/conversation', async (req, res) => {
   
   const response = new twilio.twiml.VoiceResponse();
 
-  if (callSid && !conversationHistory[callSid]) {
-    conversationHistory[callSid] = [];
+  // Add speech gathering at the start
+  const gather = response.gather({
+    input: 'speech dtmf',
+    action: '/conversation',  // This will loop back to the same route after the user responds
+    method: 'POST',
+    timeout: 3,
+    speechTimeout: 'auto',
+    bargeIn: true,
+  });
+
+  // Say the initial prompt
+  gather.say({ voice: 'Polly.Matthew-Neural' }, 'I\'m listening. Please go ahead.');
+
+  // If we haven't received any speech input (e.g., the user didn't say anything)
+  if (!userSpeech && !digits) {
+    // Redirect back to the same conversation for more interaction
+    response.redirect('/conversation');
+    return res.type('text/xml').send(response.toString());
   }
 
+  // Handle call termination condition (digits '9' or goodbye phrases)
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
     response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand you\'d like to stop. Could you let me know if there\'s something specific that\'s bothering you or if you\'d like to end the call?');
     response.hangup();
@@ -371,9 +388,11 @@ app.post('/conversation', async (req, res) => {
   }
 
   try {
+    // Process the input speech or DTMF digits
     const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
     const aiResponse = await getAIResponse(inputText, callSid);
-    
+
+    // Handle suggested appointment and send SMS if necessary
     if (aiResponse.suggestedAppointment && callSid) {
       try {
         const call = await twilioClient.calls(callSid).fetch();
@@ -386,8 +405,8 @@ app.post('/conversation', async (req, res) => {
 
         const message = await twilioClient.messages.create({
           body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
-          from: twilioPhoneNumber,
-          to: phoneNumber,
+          from: twilioPhoneNumber,  // Twilio phone number to send from
+          to: phoneNumber,          // User's phone number
         });
 
         console.log(`SMS sent to ${phoneNumber}: ${message.sid}`);
@@ -399,6 +418,7 @@ app.post('/conversation', async (req, res) => {
       }
     }
 
+    // Prevent repeating greeting and introduction after the first interaction
     const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ? 
                              conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
 
@@ -407,10 +427,13 @@ app.post('/conversation', async (req, res) => {
       aiResponse.response = aiResponse.response.replace(/Hi.*|Hello.*/i, "");
     }
 
+    // Say the AI response
     response.say({ voice: 'Polly.Matthew-Neural' }, aiResponse.response);
 
+    // Pause to let the user process the information
     response.pause({ length: 1 });
 
+    // Add final gather to continue conversation if necessary
     const finalGather = response.gather({
       input: 'speech dtmf',
       action: '/conversation',
@@ -420,6 +443,114 @@ app.post('/conversation', async (req, res) => {
       bargeIn: true,
     });
 
+    // Send response back to Twilio
+    res.type('text/xml');
+    res.send(response.toString());
+
+    console.log(`Call SID: ${callSid}`);
+    console.log(`User: ${inputText}`);
+    console.log(`Mat: ${responseText}`);
+    
+  } catch (error) {
+    console.error("Error in /conversation:", error);
+    response.say({ voice: 'Polly.Matthew-Neural' }, "I'm experiencing technical difficulties. Please try again later.");
+    res.type('text/xml');
+    res.send(response.toString());
+  }
+});
+app.post('/conversation', async (req, res) => {
+  const requestStartTime = performance.now();
+  
+  const userSpeech = req.body.SpeechResult || '';
+  const callSid = req.body.CallSid;
+  const digits = req.body.Digits || '';
+  
+  const response = new twilio.twiml.VoiceResponse();
+
+  // Add speech gathering at the start
+  const gather = response.gather({
+    input: 'speech dtmf',
+    action: '/conversation',  // This will loop back to the same route after the user responds
+    method: 'POST',
+    timeout: 3,
+    speechTimeout: 'auto',
+    bargeIn: true,
+  });
+
+  // Say the initial prompt
+  gather.say({ voice: 'Polly.Matthew-Neural' }, 'I\'m listening. Please go ahead.');
+
+  // If we haven't received any speech input (e.g., the user didn't say anything)
+  if (!userSpeech && !digits) {
+    // Redirect back to the same conversation for more interaction
+    response.redirect('/conversation');
+    return res.type('text/xml').send(response.toString());
+  }
+
+  // Handle call termination condition (digits '9' or goodbye phrases)
+  if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
+    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand you\'d like to stop. Could you let me know if there\'s something specific that\'s bothering you or if you\'d like to end the call?');
+    response.hangup();
+    return res.type('text/xml').send(response.toString());
+  }
+
+  try {
+    // Process the input speech or DTMF digits
+    const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
+    const aiResponse = await getAIResponse(inputText, callSid);
+
+    // Handle suggested appointment and send SMS if necessary
+    if (aiResponse.suggestedAppointment && callSid) {
+      try {
+        const call = await twilioClient.calls(callSid).fetch();
+        const phoneNumber = call.to;
+
+        if (!phoneNumber) {
+          console.error('No phone number found for call SID:', callSid);
+          return;
+        }
+
+        const message = await twilioClient.messages.create({
+          body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
+          from: twilioPhoneNumber,  // Twilio phone number to send from
+          to: phoneNumber,          // User's phone number
+        });
+
+        console.log(`SMS sent to ${phoneNumber}: ${message.sid}`);
+
+        aiResponse.response += ` I've sent you an SMS with the booking link.`;
+      } catch (error) {
+        console.error('Error sending SMS:', error);
+        aiResponse.response += ' There was an issue sending the SMS. Please try again later.';
+      }
+    }
+
+    // Prevent repeating greeting and introduction after the first interaction
+    const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ? 
+                             conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
+
+    const responseText = aiResponse.response.replace(/<[^>]*>/g, "");
+    if (previousResponse.includes("Hi") || previousResponse.includes("Hello")) {
+      aiResponse.response = aiResponse.response.replace(/Hi.*|Hello.*/i, "");
+    }
+
+    // Say the AI response
+    response.say({ voice: 'Polly.Matthew-Neural' }, aiResponse.response);
+
+    // Pause to let the user process the information
+    response.pause({ length: 1 });
+
+    // Add final gather to continue conversation if necessary
+    const finalGather = response.gather({
+      input: 'speech dtmf',
+      action: '/conversation',
+      method: 'POST',
+      timeout: 5,
+      speechTimeout: 'auto',
+      bargeIn: true,
+    });
+
+    // Send response back to Twilio
     res.type('text/xml');
     res.send(response.toString());
 
