@@ -457,16 +457,23 @@ app.post('/conversation', async (req, res) => {
 // Enhanced getAIResponse function with better document search using inverted index
 async function getAIResponse(userInput, callSid = null, webSessionId = null) {
   const startTime = performance.now();
-  
-  // Get conversation history from appropriate source
+
+  // Ensure conversation history is initialized
+  if (callSid && !conversationHistory[callSid]) {
+    conversationHistory[callSid] = [];
+  } else if (webSessionId && !webChatSessions[webSessionId]) {
+    webChatSessions[webSessionId] = [];
+  }
+
+  // Retrieve conversation history
   let conversationContext = '';
-  if (callSid && conversationHistory[callSid]) {
+  if (callSid) {
     conversationContext = conversationHistory[callSid]
-      .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
+      .map((msg) => `User: ${msg.user}\nMat: ${msg.assistant}`)
       .join('\n');
-  } else if (webSessionId && webChatSessions[webSessionId]) {
+  } else if (webSessionId) {
     conversationContext = webChatSessions[webSessionId]
-      .map((msg) => `User: ${msg.user}\nAssistant: ${msg.assistant}`)
+      .map((msg) => `User: ${msg.user}\nMat: ${msg.assistant}`)
       .join('\n');
   }
 
@@ -484,11 +491,15 @@ async function getAIResponse(userInput, callSid = null, webSessionId = null) {
     relevantDocs = relevantDocs.substring(0, 1500) + "... (additional relevant content omitted)";
   }
 
-const prompt = `
+  // Determine if it's the first message in the conversation
+  const isFirstMessage = conversationContext.trim() === '';
+
+  // Construct the AI prompt
+  const prompt = `
 You are Mat, a friendly professional from MultipleAI Solutions in Perth, Australia. You are a **human representative**, NOT an AI.
 
-## Conversation Guidelines:
-- **Start with small talk** (first 3-4 sentences), then **transition smoothly into business.**
+## **Conversation Guidelines:**
+- **Start with small talk** (first 3-4 sentences), then **transition smoothly into business**.
 - **Stick strictly to the script** when moving from casual talk to business topics.
 - **DO NOT** repeat greetings or reintroduce yourself once the conversation has started.
 - **NEVER make up information** or "hallucinate" details outside of the provided context.
@@ -507,6 +518,8 @@ ${userInput}
 ## **RULES FOR RESPONDING:**
 
 ### **1. FIRST MESSAGE (Initial Greeting & Small Talk)**
+If this is the user's first interaction, follow this structure:
+
 - Start with a warm greeting.
 - Engage in **3-4 sentences of small talk** (e.g., asking about their day, mentioning Perth’s weather, or a light conversation starter).
 - Example:
@@ -547,11 +560,10 @@ ${userInput}
 ✅ **Avoid hallucinations—only respond based on context.**  
 `;
 
-
   try {
     console.time('AI Response Time');
     const aiStartTime = performance.now();
-    
+
     const openaiResponse = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo', // Or your preferred model
       messages: [
@@ -561,7 +573,7 @@ ${userInput}
       max_tokens: 150, // Increased for more complete responses
       temperature: 0.7,
     });
-    
+
     const aiTime = performance.now() - aiStartTime;
     trackPerformance('aiResponse', aiTime);
     console.timeEnd('AI Response Time');
@@ -569,8 +581,7 @@ ${userInput}
     let responseText = openaiResponse.choices[0].message.content.trim();
     const suggestedAppointment = responseText.includes('[Appointment Suggested]');
     responseText = responseText.replace('[Appointment Suggested]', '');
-    conversation_history.push({ user: userInput, assistant: responseText });
-    // Log response for debugging
+
     console.log("🔹 AI Response:", responseText);
 
     // Save to appropriate conversation history
@@ -595,23 +606,24 @@ ${userInput}
         webChatSessions[webSessionId] = webChatSessions[webSessionId].slice(-10);
       }
     }
-    
+
     const totalTime = performance.now() - startTime;
     trackPerformance('getAIResponse', totalTime);
 
     return { response: responseText, suggestedAppointment };
   } catch (error) {
     console.error('Error in getAIResponse:', error);
-    
+
     const errorTime = performance.now() - startTime;
     trackPerformance('getAIResponse', errorTime);
-    
-    return { 
-      response: "I apologize, but I'm having trouble processing your request. Could you please try again?", 
-      suggestedAppointment: false 
+
+    return {
+      response: "I apologize, but I'm having trouble processing your request. Could you please try again?",
+      suggestedAppointment: false,
     };
   }
 }
+
 
 // Session cleanup - remove inactive web sessions after 30 minutes
 setInterval(() => {
