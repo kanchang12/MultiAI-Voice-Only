@@ -463,11 +463,10 @@ try {
   res.send(response.toString());
 }
 
-// Enhanced getAIResponse function with better document search using inverted index
 async function getAIResponse(userInput, callSid = null, webSessionId = null) {
   const startTime = performance.now();
   
-  // Get conversation history from appropriate source
+  // Get conversation history dynamically
   let conversationContext = '';
   if (callSid && conversationHistory[callSid]) {
     conversationContext = conversationHistory[callSid]
@@ -479,21 +478,21 @@ async function getAIResponse(userInput, callSid = null, webSessionId = null) {
       .join('\n');
   }
 
-  // Perform document search using inverted index
+  // Perform document search using inverted index (if required)
   const searchResults = searchDocumentsWithIndex(userInput);
   
-  // Format search results for context
   let relevantDocs = '';
   for (const [filename, result] of Object.entries(searchResults)) {
     relevantDocs += `\nFrom ${filename}:\n${result.contexts.join('\n')}\n`;
   }
 
-  // Trim context if too long
+  // Trim context if it's too long
   if (relevantDocs.length > 1500) {
     relevantDocs = relevantDocs.substring(0, 1500) + "... (additional relevant content omitted)";
   }
 
-const prompt = `
+  // Now we create the dynamic prompt instead of hardcoding
+  const prompt = `
 You are Mat, a friendly professional from MultipleAI Solutions in Perth, Australia. You are a human representative, NOT an AI.
 
 Make sure you speak in small talk for the first 3 lines and then smoothly transition into business. Speaking of which, I am calling to talk about our product in AI.
@@ -505,7 +504,7 @@ Make sure you speak in small talk for the first 3 lines and then smoothly transi
 - NEVER say things that are unrelated to the current conversation or "hallucinate" information.
 
 CONVERSATION HISTORY:
-${JSON.stringify(conversation_history)}
+${conversationContext}
 
 CURRENT USER MESSAGE:
 ${userInput}
@@ -524,7 +523,7 @@ RULES:
 3. **BUSINESS DISCUSSION:**
    - Only after establishing rapport, transition to business.
    - Use this pattern for business-related questions: "The reason I'm calling is to learn about your business needs..."
-   
+
 4. **HANDLING APPOINTMENTS:**
    - If the user expresses interest in scheduling a meeting or the AI suggests an appointment:
      - Send them the Calendly link via SMS (ensure this link is already provided as ${CALENDLY_LINK}).
@@ -559,8 +558,6 @@ RULES:
 
 `;
 
-
-
   try {
     console.time('AI Response Time');
     const aiStartTime = performance.now();
@@ -582,11 +579,8 @@ RULES:
     let responseText = openaiResponse.choices[0].message.content.trim();
     const suggestedAppointment = responseText.includes('[Appointment Suggested]');
     responseText = responseText.replace('[Appointment Suggested]', '');
-    conversation_history.push({ user: userInput, assistant: responseText });
-    // Log response for debugging
-    console.log("🔹 AI Response:", responseText);
-
-    // Save to appropriate conversation history
+    
+    // Store the updated conversation history
     if (callSid) {
       conversationHistory[callSid].push({
         user: userInput,
@@ -615,7 +609,6 @@ RULES:
     return { response: responseText, suggestedAppointment };
   } catch (error) {
     console.error('Error in getAIResponse:', error);
-    
     const errorTime = performance.now() - startTime;
     trackPerformance('getAIResponse', errorTime);
     
@@ -625,6 +618,7 @@ RULES:
     };
   }
 }
+
 
 // Session cleanup - remove inactive web sessions after 30 minutes
 setInterval(() => {
