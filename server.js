@@ -404,25 +404,34 @@ try {
   const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
   const aiResponse = await getAIResponse(inputText, callSid);
   
-  // Check if appointment was suggested by AI
-  if (aiResponse.suggestedAppointment && callSid) {
+if (aiResponse.suggestedAppointment && callSid) {
     try {
-      const call = await twilioClient.calls(callSid).fetch();
-      const phoneNumber = call.to;
+        // Fetch call details to get the phone number
+        const call = await twilioClient.calls(callSid).fetch();
+        const phoneNumber = call.to;
 
-      // Send SMS with the Calendly link
-      await twilioClient.messages.create({
-        body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
-        from: twilioPhoneNumber,
-        to: phoneNumber,
-      });
+        if (!phoneNumber) {
+            console.error('No phone number found for call SID:', callSid);
+            return;
+        }
 
-      console.log(`SMS sent to ${phoneNumber}`);
-      aiResponse.response += ` I've sent you an SMS with the booking link.`;
+        // Send SMS with the Calendly link
+        const message = await twilioClient.messages.create({
+            body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
+            from: twilioPhoneNumber,  // Twilio phone number to send from
+            to: phoneNumber,          // User's phone number
+        });
+
+        console.log(`SMS sent to ${phoneNumber}: ${message.sid}`);
+
+        // Add the information to AI's response
+        aiResponse.response += ` I've sent you an SMS with the booking link.`;
     } catch (error) {
-      console.error('Error sending SMS:', error);
+        console.error('Error sending SMS:', error);
+        aiResponse.response += ' There was an issue sending the SMS. Please try again later.';
     }
-  }
+}
+
 
   // Prevent repeating greeting and introduction after the first interaction
   const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ? 
@@ -492,7 +501,7 @@ async function getAIResponse(userInput, callSid = null, webSessionId = null) {
   }
 
   // Now we create the dynamic prompt instead of hardcoding
-  const prompt = `
+ const prompt = `
 You are Mat, a friendly professional from MultipleAI Solutions in Perth, Australia. You are a human representative, NOT an AI.
 
 Make sure you speak in small talk for the first 3 lines and then smoothly transition into business. Speaking of which, I am calling to talk about our product in AI.
@@ -555,8 +564,8 @@ RULES:
 - **Stick to the flow of the script** while adjusting based on user responses.
 - **Keep responses professional and relevant.**
 - **Ensure no hallucinations**—respond only based on the context given and information already shared.
-
 `;
+
 
   try {
     console.time('AI Response Time');
