@@ -354,45 +354,54 @@ app.post('/twiml', (req, res) => {
 app.post('/conversation', async (req, res) => {
   const requestStartTime = performance.now();
   
-  const userSpeech = req.body.SpeechResult || '';
-  const callSid = req.body.CallSid;
-  const digits = req.body.Digits || '';
+  const userSpeech = req.body.SpeechResult || '';  // Get user speech input
+  const callSid = req.body.CallSid;                // Get the call SID
+  const digits = req.body.Digits || '';            // Get DTMF digits if pressed
   
-  const response = new twilio.twiml.VoiceResponse();
+  const response = new twilio.twiml.VoiceResponse(); // Create response
 
-  // If we haven't received any speech input (e.g., the user didn't say anything)
+  // Initialize conversationHistory if it's not already initialized
+  if (!conversationHistory[callSid]) {
+    conversationHistory[callSid] = [];
+  }
+
+  // If no input (no speech or digits), we initiate a gather to listen for user input
   if (!userSpeech && !digits) {
-    // Start a speech gather session, allowing the user to speak
     const gather = response.gather({
-      input: 'speech dtmf',
-      action: '/conversation',  // This will loop back to the same route after the user responds
-      method: 'POST',
-      timeout: 5,  // Adjust timeout as necessary
-      speechTimeout: 'auto',
-      bargeIn: true,  // Allow the user to interrupt
+      input: 'speech dtmf',    // Gather speech or DTMF input
+      action: '/conversation', // Action when input is received
+      method: 'POST',          // POST method to handle the action
+      timeout: 5,              // Timeout in seconds
+      speechTimeout: 'auto',   // Automatically detect when speech ends
+      bargeIn: true,           // Allow user to interrupt Mat's speech
     });
 
-    // Say the initial prompt
-    gather.say({ voice: 'Polly.Matthew-Neural' }, 'I\'m listening. Please go ahead.');
-    
-    // Redirect to the same conversation if no speech or digits received
+    gather.say({ voice: 'Polly.Matthew-Neural' }, "I'm listening. Please go ahead.");  // Mat speaks
+
+    // If no input, we redirect the same route to gather again
     response.redirect('/conversation');
     return res.type('text/xml').send(response.toString());
   }
 
-  // Handle call termination condition (digits '9' or goodbye phrases)
+  // If user says goodbye or presses '9', we end the call
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand you\'d like to stop. Could you let me know if there\'s something specific that\'s bothering you or if you\'d like to end the call?');
+    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand you\'d like to stop. Goodbye!');
     response.hangup();
     return res.type('text/xml').send(response.toString());
   }
 
   try {
-    // Process the input speech or DTMF digits
+    // Use the speech or digits input for AI interaction
     const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
-    const aiResponse = await getAIResponse(inputText, callSid);
 
-    // Handle suggested appointment and send SMS if necessary
+    // Add user input to conversation history
+    conversationHistory[callSid].push({ user: inputText });
+
+    // Call AI for response (Make sure this part is correctly processing)
+    const aiResponse = await getAIResponse(inputText, callSid);
+    console.log(aiResponse);
+
+    // Check if AI suggested an appointment and send SMS if necessary
     if (aiResponse.suggestedAppointment && callSid) {
       try {
         const call = await twilioClient.calls(callSid).fetch();
@@ -405,7 +414,7 @@ app.post('/conversation', async (req, res) => {
 
         const message = await twilioClient.messages.create({
           body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
-          from: twilioPhoneNumber,  // Twilio phone number to send from
+          from: twilioPhoneNumber,  // Twilio phone number
           to: phoneNumber,          // User's phone number
         });
 
@@ -418,42 +427,41 @@ app.post('/conversation', async (req, res) => {
       }
     }
 
-    // Prevent repeating greeting and introduction after the first interaction
-    const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ? 
-                             conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
+    // Add assistant response to conversation history
+    conversationHistory[callSid].push({ assistant: aiResponse.response });
+
+    // Remove redundant greetings if present in previous responses
+    const previousResponse = conversationHistory[callSid].length > 1 ? 
+                             conversationHistory[callSid][conversationHistory[callSid].length - 2].assistant : "";
 
     const responseText = aiResponse.response.replace(/<[^>]*>/g, "");
     if (previousResponse.includes("Hi") || previousResponse.includes("Hello")) {
       aiResponse.response = aiResponse.response.replace(/Hi.*|Hello.*/i, "");
     }
 
-    // Say the AI response, this will stop if the user speaks due to bargeIn
+    // Mat speaks the response
     response.say({ voice: 'Polly.Matthew-Neural' }, aiResponse.response);
 
-    // Pause to let the user process the information
+    // Pause for a second after Mat finishes speaking
     response.pause({ length: 1 });
 
-    // Add final gather to continue conversation if necessary, and handle the timeout to prevent infinite loop
+    // Add a final gather to listen for the user's input again
     const finalGather = response.gather({
-      input: 'speech dtmf',
-      action: '/conversation',
-      method: 'POST',
-      timeout: 5,  // Increase timeout if necessary, based on the flow
-      speechTimeout: 'auto',
-      bargeIn: true,
+      input: 'speech dtmf',    // Gather either speech or DTMF input
+      action: '/conversation', // Action when input is received
+      method: 'POST',          // POST method to handle input
+      timeout: 5,              // Timeout duration in seconds
+      speechTimeout: 'auto',   // Automatically detect when speech ends
+      bargeIn: true,           // Allow user to interrupt Mat
     });
 
-    // After timeout, hang up if no input is received (default behavior)
-    response.say({ voice: 'Polly.Matthew-Neural' }, 'I didn\'t hear anything, so I will end the call now.');
-    response.hangup();
-
-    // Send response back to Twilio
+    // Return the XML response to Twilio
     res.type('text/xml');
     res.send(response.toString());
 
     console.log(`Call SID: ${callSid}`);
     console.log(`User: ${inputText}`);
-    console.log(`Mat: ${responseText}`);
+    console.log(`Mat: ${aiResponse.response}`);
     
   } catch (error) {
     console.error("Error in /conversation:", error);
@@ -462,6 +470,7 @@ app.post('/conversation', async (req, res) => {
     res.send(response.toString());
   }
 });
+
 
 
 async function getAIResponse(userInput, callSid = null, webSessionId = null) {
