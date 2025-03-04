@@ -390,9 +390,17 @@ app.post('/conversation', async (req, res) => {
   
   const response = new twilio.twiml.VoiceResponse();
 
-  if (callSid && !conversationHistory[callSid]) {
-    conversationHistory[callSid] = [];
-  }
+if (!callSid) {
+  console.error("Missing CallSid in request");
+  response.say({ voice: 'Polly.Matthew-Neural' }, 
+    "I'm sorry, but I couldn't process your request. Please try again later.");
+  return res.type('text/xml').send(response.toString());
+}
+
+// Ensure conversation history is initialized
+if (!conversationHistory[callSid]) {
+  conversationHistory[callSid] = [];
+}
 
   // If user says "goodbye" or presses 9, end the call
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
