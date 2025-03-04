@@ -192,11 +192,11 @@
 <body>
     <div class="container">
         <div class="tabs">
-            <div class="tab active" data-tab="chat">
+            <div class="tab active" data-tab="chat" aria-label="Chat">
                 <i class="fas fa-comment-dots"></i>
                 Chat
             </div>
-            <div class="tab" data-tab="call">
+            <div class="tab" data-tab="call" aria-label="Call">
                 <i class="fas fa-phone"></i>
                 Call
             </div>
@@ -209,8 +209,8 @@
                 </div>
             </div>
             <div class="chat-input">
-                <input type="text" class="message-input" id="messageInput" placeholder="Type your message...">
-                <button class="send-btn" id="sendMessage">
+                <input type="text" class="message-input" id="messageInput" placeholder="Type your message..." aria-label="Type your message">
+                <button class="send-btn" id="sendMessage" aria-label="Send Message">
                     <i class="fas fa-paper-plane"></i>
                 </button>
             </div>
@@ -220,8 +220,8 @@
             <div class="call-section">
                 <h3>Initiate a Call</h3>
                 <div class="call-input">
-                    <input type="tel" id="phoneNumber" placeholder="Enter phone number" required>
-                    <button class="call-btn" id="callBtn">
+                    <input type="tel" id="phoneNumber" placeholder="Enter phone number" required aria-label="Phone number">
+                    <button class="call-btn" id="callBtn" aria-label="Initiate Call">
                         <i class="fas fa-phone"></i> Call
                     </button>
                 </div>
@@ -255,12 +255,12 @@
             });
         });
 
-        // Chat Functionality (Similar to previous implementation)
+        // Chat Functionality (Using async/await for better readability)
         const chatMessages = document.getElementById('chatMessages');
         const messageInput = document.getElementById('messageInput');
         const sendMessage = document.getElementById('sendMessage');
 
-        function sendMessageToServer() {
+        async function sendMessageToServer() {
             const userMessage = messageInput.value.trim();
             if (userMessage) {
                 appendMessage(userMessage, 'user-message');
@@ -269,30 +269,28 @@
                 const loadingId = 'loading-' + Date.now();
                 appendMessage('Thinking...', 'bot-message', loadingId);
                 
-                fetch('/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `message=${encodeURIComponent(userMessage)}`,
-                })
-                .then(response => response.json())
-                .then(data => {
+                try {
+                    const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `message=${encodeURIComponent(userMessage)}`,
+                    });
+                    const data = await response.json();
                     const loadingElement = document.getElementById(loadingId);
                     if (loadingElement) {
                         chatMessages.removeChild(loadingElement);
                     }
-                    
                     appendMessageWithHTML(data.response, 'bot-message');
-                })
-                .catch(error => {
+                } catch (error) {
                     console.error('Error:', error);
                     const loadingElement = document.getElementById(loadingId);
                     if (loadingElement) {
                         chatMessages.removeChild(loadingElement);
                     }
                     appendMessage('Sorry, there was an error processing your request.', 'bot-message');
-                });
+                }
             }
         }
 
@@ -313,7 +311,7 @@
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
-        
+
         function appendMessageWithHTML(message, className, id = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
@@ -325,25 +323,25 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        // Call Functionality
+        // Call Functionality with better error handling
         const callForm = document.getElementById('callBtn');
         const phoneNumberInput = document.getElementById('phoneNumber');
 
-        callForm.addEventListener('click', function(e) {
+        callForm.addEventListener('click', async function(e) {
             const phoneNumber = phoneNumberInput.value.trim();
             if (phoneNumber) {
                 callForm.disabled = true;
                 callForm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calling...';
                 
-                fetch('/call', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `phone_number=${encodeURIComponent(phoneNumber)}`,
-                })
-                .then(response => response.json())
-                .then(data => {
+                try {
+                    const response = await fetch('/call', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `phone_number=${encodeURIComponent(phoneNumber)}`,
+                    });
+                    const data = await response.json();
                     callForm.disabled = false;
                     callForm.innerHTML = '<i class="fas fa-phone"></i> Call';
                     
@@ -353,15 +351,14 @@
                         alert('Call initiated successfully!');
                         appendMessage(`Call initiated to ${phoneNumber}. You should receive it shortly.`, 'bot-message');
                     }
-                })
-                .catch(error => {
+                } catch (error) {
                     console.error('Error:', error);
                     callForm.disabled = false;
                     callForm.innerHTML = '<i class="fas fa-phone"></i> Call';
-                    alert('Error making the call. Please try again.');
-                });
+                    alert('Error initiating the call. Please try again later.');
+                }
             } else {
-                alert('Please enter a phone number.');
+                alert('Please enter a valid phone number.');
             }
         });
     </script>
