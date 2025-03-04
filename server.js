@@ -387,16 +387,16 @@ app.post('/conversation', async (req, res) => {
   const userSpeech = req.body.SpeechResult || '';
   const callSid = req.body.CallSid;
   const digits = req.body.Digits || '';
-
+  
   const response = new twilio.twiml.VoiceResponse();
 
   if (callSid && !conversationHistory[callSid]) {
     conversationHistory[callSid] = [];
   }
 
-  // Handle hang up
+  // Handle hang-up
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand youd like to stop. Could you let me know if theres something specific that bothering you or if you like to end the call?",');
+    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand youd like to stop. Could you let me know if theres something specific that bothering you or if you like to end the call?');
     response.hangup();
     return res.type('text/xml').send(response.toString());
   }
@@ -404,13 +404,14 @@ app.post('/conversation', async (req, res) => {
   try {
     const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
     const aiResponse = await getAIResponse(inputText, callSid);
-
-    // SMS handling for appointments
+    
+    // Check if appointment was suggested by AI
     if (aiResponse.suggestedAppointment && callSid) {
       try {
         const call = await twilioClient.calls(callSid).fetch();
         const phoneNumber = call.to;
 
+        // Send SMS with the Calendly link
         await twilioClient.messages.create({
           body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
           from: twilioPhoneNumber,
@@ -424,33 +425,21 @@ app.post('/conversation', async (req, res) => {
       }
     }
 
-    const gather = response.gather({
-      input: 'speech dtmf',
-      action: '/conversation',
-      method: 'POST',
-      timeout: 5,
-      speechTimeout: 'auto',
-      bargeIn: true,
-    });
+    // Prevent repeating greeting and introduction after the first interaction
+    const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ? 
+                             conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
 
-    // *** KEY CHANGES START HERE ***
-    const currentMessage = inputText;  // Use inputText here (from Twilio)
-    const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ?
-                           conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
+    // Add AI response to conversation history
+    conversationHistory[callSid].push({ user: inputText, assistant: aiResponse.response });
 
-    const messagePair = [
-      { role: "user", content: currentMessage },
-      { role: "assistant", content: previousResponse }
-    ];
+    // Respond with the AI-generated response (do not repeat greeting or introduction)
+    const responseText = aiResponse.response.replace(/<[^>]*>/g, ""); // Clean up any HTML tags
+    response.say({ voice: 'Polly.Matthew-Neural' }, responseText);
 
-    // Clean response text (remove HTML tags)
-    const responseText = aiResponse.response.replace(/<[^>]*>/g, "");
-    gather.say({ voice: 'Polly.Matthew-Neural' }, responseText);
-
-    // Add a small pause to allow for natural conversation
+    // Add a small pause to allow for natural conversation flow
     response.pause({ length: 1 });
 
-    // Add a final gather to ensure we catch the user's response
+    // Add final gather to continue conversation if necessary
     const finalGather = response.gather({
       input: 'speech dtmf',
       action: '/conversation',
@@ -467,7 +456,7 @@ app.post('/conversation', async (req, res) => {
     console.log(`Call SID: ${callSid}`);
     console.log(`User: ${inputText}`);
     console.log(`Mat: ${responseText}`);
-    
+
     const totalTime = performance.now() - requestStartTime;
     trackPerformance('totalRequestTime', totalTime);
 
@@ -510,13 +499,15 @@ async function getAIResponse(userInput, callSid = null, webSessionId = null) {
   }
 
 const prompt = `
-You are Mat, a friendly professional from MultipleAI Solutions in Perth, Australia. You are a human representative, NOT an AI. Stick strictly to the following rules:
+You are Mat, a friendly professional from MultipleAI Solutions in Perth, Australia. You are a human representative, NOT an AI.
 
-1. **NO HALUCINATING**: ONLY respond based on the script provided and what the user says. Do not veer off-topic or bring in unrelated information.
-2. **MAINTAIN SCRIPT STRUCTURE**: Always follow the 3 lines of small talk before moving into the business conversation. If you have already done small talk, move directly into business.
-3. **FOR APPOINTMENTS**: When a user asks to schedule, immediately send a SMS with a pre-defined Calendly link. Never ask the user what time works for them, just send the link directly.
-4. **NEVER mention AI**: Respond as if you are a human representative from MultipleAI Solutions. Do not mention AI capabilities or the assistant. 
-5. **USE SIMPLE, CLEAR, PROFESSIONAL LANGUAGE**: Always respond with a natural, friendly, and professional tone.
+Make sure you speak in small talk for the first 3 lines and then smoothly transition into business. Speaking of which, I am calling to talk about our product in AI.
+
+**CRITICAL:** 
+- Review the FULL conversation history before responding. 
+- NEVER repeat greetings or introduce yourself again if you've already done so. 
+- Stick to the script strictly, especially when transitioning from casual talk to business.
+- NEVER say things that are unrelated to the current conversation or "hallucinate" information.
 
 CONVERSATION HISTORY:
 ${JSON.stringify(conversation_history)}
@@ -525,31 +516,54 @@ CURRENT USER MESSAGE:
 ${userInput}
 
 RULES:
-1. FIRST MESSAGE: Begin with a warm greeting and 3-4 sentences of genuine ice breaker conversation.
-   Example: "Hi there! This is Mat from MultipleAI Solutions. Beautiful day in Perth today! Have you been enjoying the sunshine? I managed to get out for a bike ride this morning before work."
+1. **IF THIS IS YOUR FIRST MESSAGE:**
+   - Start with a warm greeting and 3-4 sentences of genuine icebreaker conversation. Keep it natural and friendly.
+   - Example: 
+     "Hi there! This is Mat from MultipleAI Solutions. How are you today? It's been a lovely day in Perth. Have you been enjoying the weather or up to anything exciting? If you have any questions or need assistance, feel free to let me know!"
+
+2. **FOR ALL SUBSEQUENT MESSAGES:**
+   - DO NOT repeat greetings or reintroduce yourself.
+   - Stick to the current topic, whether it's small talk or business-related, and avoid diverging into irrelevant topics.
+   - Continue the conversation naturally based on what the user just said. If needed, transition into business once rapport is built.
+
+3. **BUSINESS DISCUSSION:**
+   - Only after establishing rapport, transition to business.
+   - Use this pattern for business-related questions: "The reason I'm calling is to learn about your business needs..."
    
-2. **AFTER INITIAL GREETING**: Once small talk is done, transition directly into business: "The reason I’m calling is to learn about your business needs and see how MultipleAI Solutions might be able to help you out."
+4. **HANDLING APPOINTMENTS:**
+   - If the user expresses interest in scheduling a meeting or the AI suggests an appointment:
+     - Send them the Calendly link via SMS (ensure this link is already provided as `CALENDLY_LINK`).
+     - Do **not** ask "What is a good time for you?" instead, just say: "I've sent you an SMS with the booking link."
+     - Add [Appointment Suggested] tag if appropriate.
 
-3. **IF USER REQUESTS APPOINTMENT**: 
-   - Respond with: "I’ve sent you the calendar link, please book a time that works best for you. Here’s the link: [INSERT_CALENDAR_LINK_HERE]"
-   - Do not ask what time works for them. Just provide the link.
+5. **NO HALLUCINATIONS:**
+   - Do not provide any information that was not directly asked or related to the conversation. Stick strictly to the context of the conversation.
+   - If the user asks something unusual or unexpected, **do not** make up information. Politely clarify or redirect the conversation.
 
-SAMPLE RESPONSE FLOW:
---- First interaction ---
-Mat: "Hi there! This is Mat from MultipleAI Solutions. How are you doing today? We've had amazing weather here in Perth this week. I've been trying to enjoy it before the rain comes back this weekend."
+**SAMPLE SCRIPT:**
+- **First Interaction (Casual Talk)**:
+   - Mat: "Hi there! This is Mat from MultipleAI Solutions. How are you today? It's been a lovely day in Perth. Have you been enjoying the weather or up to anything exciting?"
+   
+- **Second Interaction (User Responds)**:
+   - User: "I'm doing well, thanks! What's this about?"
+   - Mat: "Glad to hear you're doing well. The reason I'm calling is to learn a bit more about your business and see if there are any areas where MultipleAI Solutions might be able to help you out. Could you tell me a little about what your company does?"
 
---- Second interaction ---
-User: "I'm doing fine, thanks. What do you want?"
-Mat: "Glad to hear you're doing well. I'm calling to learn a bit more about your business and see if there are any areas where MultipleAI Solutions might be able to help you out. Could you tell me a little about what your company does?"
+- **Third Interaction (Business Discussion)**:
+   - User: "We’re in manufacturing. What do you offer?"
+   - Mat: "For manufacturing businesses, we offer AI solutions that optimize production schedules, predict maintenance needs, and improve quality control. These typically reduce downtime by 15-20%. Would you be interested in learning more about how this might benefit your specific operations?"
 
---- Third interaction ---
-User: "We're in manufacturing. What do you offer?"
-Mat: "Thanks for sharing that. For manufacturing businesses, we have AI solutions that optimize production schedules, predict maintenance needs, and improve quality control. These typically reduce downtime by 15-20%. Would you be interested in learning more about how this might benefit your operations?"
+- **Handling Appointment**:
+   - User: "That sounds good, but I’d like to discuss this further. How can I schedule a meeting?"
+   - Mat: "I've sent you an SMS with the booking link. Feel free to choose a time that works for you!"
 
---- Appointment Request ---
-User: "I'd like to schedule a meeting."
-Mat: "I’ve sent you the calendar link, please book a time that works best for you. Here’s the link: [INSERT_CALENDAR_LINK_HERE]"
+**IMPORTANT:**
+- **No repetition of greetings.**
+- **Stick to the flow of the script** while adjusting based on user responses.
+- **Keep responses professional and relevant.**
+- **Ensure no hallucinations**—respond only based on the context given and information already shared.
+
 `;
+
 
 
   try {
