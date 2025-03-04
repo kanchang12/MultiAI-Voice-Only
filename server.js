@@ -387,95 +387,69 @@ app.post('/conversation', async (req, res) => {
   const userSpeech = req.body.SpeechResult || '';
   const callSid = req.body.CallSid;
   const digits = req.body.Digits || '';
-
+  
   const response = new twilio.twiml.VoiceResponse();
 
   if (callSid && !conversationHistory[callSid]) {
     conversationHistory[callSid] = [];
   }
 
-  // Handle hang up
+  // If user says "goodbye" or presses 9, end the call
   if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand youd like to stop. Could you let me know if theres something specific that bothering you or if you like to end the call?",');
+    response.say({ voice: 'Polly.Matthew-Neural' }, 
+      "I understand you'd like to stop. Thank you for your time. Have a great day!");
     response.hangup();
     return res.type('text/xml').send(response.toString());
   }
 
   try {
     const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
-    const aiResponse = await getAIResponse(inputText, callSid);
 
-    // SMS handling for appointments
-    if (aiResponse.suggestedAppointment && callSid) {
-      try {
-        const call = await twilioClient.calls(callSid).fetch();
-        const phoneNumber = call.to;
+    // Ensure AI gets the correct prompt structure
+    const conversationContext = conversationHistory[callSid].map(entry => `User: ${entry.user}\nMat: ${entry.assistant}`).join("\n");
+    
+    const aiResponse = await getAIResponse(inputText, conversationContext, callSid);
 
-        await twilioClient.messages.create({
-          body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
-          from: twilioPhoneNumber,
-          to: phoneNumber,
-        });
+    // Ensure conversation history tracking
+    conversationHistory[callSid].push({ user: inputText, assistant: aiResponse.response });
 
-        console.log(`SMS sent to ${phoneNumber}`);
-        aiResponse.response += ` I've sent you an SMS with the booking link.`;
-      } catch (error) {
-        console.error('Error sending SMS:', error);
-      }
+    // Remove repetitive greetings
+    const previousResponse = conversationHistory[callSid].length > 1 ? conversationHistory[callSid][conversationHistory[callSid].length - 2].assistant : "";
+    const responseText = aiResponse.response.replace(/<[^>]*>/g, ""); // Remove any HTML-like tags
+
+    if (/hi|hello|good (morning|afternoon|evening)/i.test(previousResponse)) {
+      aiResponse.response = aiResponse.response.replace(/Hi.*|Hello.*/i, "");
     }
 
+    // Speak AI response
+    response.say({ voice: 'Polly.Matthew-Neural' }, aiResponse.response);
+
+    // Pause for interruption handling
+    response.pause({ length: 1 });
+
+    // Enable barge-in to allow interruption
     const gather = response.gather({
       input: 'speech dtmf',
       action: '/conversation',
       method: 'POST',
       timeout: 5,
       speechTimeout: 'auto',
-      bargeIn: true,
+      bargeIn: true, // Allows user to interrupt Mat
     });
 
-    // *** KEY CHANGES START HERE ***
-    const currentMessage = inputText;  // Use inputText here (from Twilio)
-    const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ?
-                           conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
+    gather.say({ voice: 'Polly.Matthew-Neural' }, "Go ahead, I'm listening.");
 
-    const messagePair = [
-      { role: "user", content: currentMessage },
-      { role: "assistant", content: previousResponse }
-    ];
+    res.type('text/xml').send(response.toString());
 
-    // Clean response text (remove HTML tags)
-    const responseText = aiResponse.response.replace(/<[^>]*>/g, "");
-    gather.say({ voice: 'Polly.Matthew-Neural' }, responseText);
-
-    // Add a small pause to allow for natural conversation
-    response.pause({ length: 1 });
-
-    // Add a final gather to ensure we catch the user's response
-    const finalGather = response.gather({
-      input: 'speech dtmf',
-      action: '/conversation',
-      method: 'POST',
-      timeout: 5,
-      speechTimeout: 'auto',
-      bargeIn: true,
-    });
-
-    res.type('text/xml');
-    res.send(response.toString());
-
-    // Log conversation for debugging
     console.log(`Call SID: ${callSid}`);
     console.log(`User: ${inputText}`);
     console.log(`Mat: ${responseText}`);
     
-    const totalTime = performance.now() - requestStartTime;
-    trackPerformance('totalRequestTime', totalTime);
-
   } catch (error) {
     console.error("Error in /conversation:", error);
-    response.say({ voice: 'Polly.Matthew-Neural' }, "I'm experiencing technical difficulties. Please try again later.");
-    res.type('text/xml');
-    res.send(response.toString());
+    response.say({ voice: 'Polly.Matthew-Neural' }, 
+      "I'm experiencing technical difficulties. Please try again later.");
+    res.type('text/xml').send(response.toString());
   }
 });
 
