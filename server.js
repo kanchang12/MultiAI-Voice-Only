@@ -429,16 +429,22 @@ app.post('/conversation', async (req, res) => {
     response.say({ voice: 'Polly.Matthew-Neural', bargeIn: true }, responseText);
 
     // Add final gather to continue conversation with barge-in enabled
-    const gather = response.gather({
-      input: 'speech dtmf',
-      action: '/conversation',
-      method: 'POST',
-      timeout: 5,
-      speechTimeout: 'auto',
-      bargeIn: true,
-    });
+    if (!aiResponse.suggestedAppointment) {  // Only continue if no appointment is suggested
+      const gather = response.gather({
+        input: 'speech dtmf',
+        action: '/conversation',
+        method: 'POST',
+        timeout: 5,
+        speechTimeout: 'auto',
+        bargeIn: true,
+      });
 
-    gather.say({ voice: 'Polly.Matthew-Neural' }, "Go ahead, I'm listening.");
+      gather.say({ voice: 'Polly.Matthew-Neural' }, "Go ahead, I'm listening.");
+    } else {
+      // If appointment is suggested, end the call
+      response.say({ voice: 'Polly.Matthew-Neural' }, "I've sent you an SMS with the booking link. Thank you for your time. Have a great day!");
+      response.hangup();
+    }
 
     res.type('text/xml').send(response.toString());
 
@@ -453,8 +459,6 @@ app.post('/conversation', async (req, res) => {
   }
 });
 
-
-// Enhanced getAIResponse function with better document search using inverted index
 async function getAIResponse(userInput, callSid = null, webSessionId = null) {
   const startTime = performance.now();
 
@@ -584,6 +588,21 @@ If this is the user's first interaction, follow this structure:
 
     console.log("🔹 AI Response:", responseText);
 
+    // Send SMS if appointment is suggested
+    if (suggestedAppointment && callSid) {
+      try {
+        const phoneNumber = conversationHistory[callSid][0].user; // Assuming the phone number is stored in the first user message
+        await twilioClient.messages.create({
+          body: `You can schedule a meeting with us here: ${CALENDLY_LINK}`,
+          from: twilioPhoneNumber,
+          to: phoneNumber,
+        });
+        console.log(`SMS sent to ${phoneNumber}`);
+      } catch (smsError) {
+        console.error('Error sending SMS:', smsError);
+      }
+    }
+
     // Save to appropriate conversation history
     if (callSid) {
       conversationHistory[callSid].push({
@@ -623,7 +642,6 @@ If this is the user's first interaction, follow this structure:
     };
   }
 }
-
 
 // Session cleanup - remove inactive web sessions after 30 minutes
 setInterval(() => {
