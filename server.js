@@ -394,79 +394,74 @@ app.post('/conversation', async (req, res) => {
     conversationHistory[callSid] = [];
   }
 
-  // Handle hang-up
-  if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
-    response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand youd like to stop. Could you let me know if theres something specific that bothering you or if you like to end the call?');
-    response.hangup();
-    return res.type('text/xml').send(response.toString());
-  }
+ if (digits === '9' || /goodbye|bye|hang up|end call/i.test(userSpeech)) {
+  response.say({ voice: 'Polly.Matthew-Neural' }, 'I understand youd like to stop. Could you let me know if theres something specific that bothering you or if you like to end the call?');
+  response.hangup();
+  return res.type('text/xml').send(response.toString());
+}
 
-  try {
-    const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
-    const aiResponse = await getAIResponse(inputText, callSid);
-    
-    // Check if appointment was suggested by AI
-    if (aiResponse.suggestedAppointment && callSid) {
-      try {
-        const call = await twilioClient.calls(callSid).fetch();
-        const phoneNumber = call.to;
+try {
+  const inputText = userSpeech || (digits ? `Button ${digits} pressed` : "Hello");
+  const aiResponse = await getAIResponse(inputText, callSid);
+  
+  // Check if appointment was suggested by AI
+  if (aiResponse.suggestedAppointment && callSid) {
+    try {
+      const call = await twilioClient.calls(callSid).fetch();
+      const phoneNumber = call.to;
 
-        // Send SMS with the Calendly link
-        await twilioClient.messages.create({
-          body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
-          from: twilioPhoneNumber,
-          to: phoneNumber,
-        });
+      // Send SMS with the Calendly link
+      await twilioClient.messages.create({
+        body: `Here is the link to schedule a meeting with MultipleAI Solutions: ${CALENDLY_LINK}`,
+        from: twilioPhoneNumber,
+        to: phoneNumber,
+      });
 
-        console.log(`SMS sent to ${phoneNumber}`);
-        aiResponse.response += ` I've sent you an SMS with the booking link.`;
-      } catch (error) {
-        console.error('Error sending SMS:', error);
-      }
+      console.log(`SMS sent to ${phoneNumber}`);
+      aiResponse.response += ` I've sent you an SMS with the booking link.`;
+    } catch (error) {
+      console.error('Error sending SMS:', error);
     }
-
-    // Prevent repeating greeting and introduction after the first interaction
-    const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ? 
-                             conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
-
-    // Add AI response to conversation history
-    conversationHistory[callSid].push({ user: inputText, assistant: aiResponse.response });
-
-    // Respond with the AI-generated response (do not repeat greeting or introduction)
-    const responseText = aiResponse.response.replace(/<[^>]*>/g, ""); // Clean up any HTML tags
-    response.say({ voice: 'Polly.Matthew-Neural' }, responseText);
-
-    // Add a small pause to allow for natural conversation flow
-    response.pause({ length: 1 });
-
-    // Add final gather to continue conversation if necessary
-    const finalGather = response.gather({
-      input: 'speech dtmf',
-      action: '/conversation',
-      method: 'POST',
-      timeout: 5,
-      speechTimeout: 'auto',
-      bargeIn: true,
-    });
-
-    res.type('text/xml');
-    res.send(response.toString());
-
-    // Log conversation for debugging
-    console.log(`Call SID: ${callSid}`);
-    console.log(`User: ${inputText}`);
-    console.log(`Mat: ${responseText}`);
-
-    const totalTime = performance.now() - requestStartTime;
-    trackPerformance('totalRequestTime', totalTime);
-
-  } catch (error) {
-    console.error("Error in /conversation:", error);
-    response.say({ voice: 'Polly.Matthew-Neural' }, "I'm experiencing technical difficulties. Please try again later.");
-    res.type('text/xml');
-    res.send(response.toString());
   }
-});
+
+  // Prevent repeating greeting and introduction after the first interaction
+  const previousResponse = conversationHistory[callSid] && conversationHistory[callSid].length > 0 ? 
+                           conversationHistory[callSid][conversationHistory[callSid].length - 1].assistant : "";
+
+  // If greeting exists, remove it from the AI response (do not repeat the greeting)
+  const responseText = aiResponse.response.replace(/<[^>]*>/g, ""); // Clean up any HTML tags
+  if (previousResponse.includes("Hi") || previousResponse.includes("Hello")) {
+    aiResponse.response = aiResponse.response.replace(/Hi.*|Hello.*/i, "");
+  }
+
+  response.say({ voice: 'Polly.Matthew-Neural' }, aiResponse.response);
+
+  // Add a small pause to allow for natural conversation flow
+  response.pause({ length: 1 });
+
+  // Add final gather to continue conversation if necessary
+  const finalGather = response.gather({
+    input: 'speech dtmf',
+    action: '/conversation',
+    method: 'POST',
+    timeout: 5,
+    speechTimeout: 'auto',
+    bargeIn: true,
+  });
+
+  res.type('text/xml');
+  res.send(response.toString());
+
+  console.log(`Call SID: ${callSid}`);
+  console.log(`User: ${inputText}`);
+  console.log(`Mat: ${responseText}`);
+  
+} catch (error) {
+  console.error("Error in /conversation:", error);
+  response.say({ voice: 'Polly.Matthew-Neural' }, "I'm experiencing technical difficulties. Please try again later.");
+  res.type('text/xml');
+  res.send(response.toString());
+}
 
 // Enhanced getAIResponse function with better document search using inverted index
 async function getAIResponse(userInput, callSid = null, webSessionId = null) {
