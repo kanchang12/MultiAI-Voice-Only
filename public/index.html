@@ -146,47 +146,6 @@
             background-color: #2980b9;
         }
 
-        /* Call Section */
-        .call-section {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .call-input {
-            display: flex;
-            gap: 10px;
-        }
-
-        .call-input input {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            outline: none;
-        }
-
-        .call-btn {
-            background-color: var(--secondary-color);
-            color: var(--white);
-            border: none;
-            padding: 12px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .call-btn:hover {
-            background-color: #27ae60;
-        }
-
-        .call-btn:disabled {
-            background-color: #95a5a6;
-            cursor: not-allowed;
-        }
     </style>
 </head>
 <body>
@@ -196,16 +155,12 @@
                 <i class="fas fa-comment-dots"></i>
                 Chat
             </div>
-            <div class="tab" data-tab="call" aria-label="Call">
-                <i class="fas fa-phone"></i>
-                Call
-            </div>
         </div>
 
         <div id="chatTab" class="tab-content active">
             <div class="chat-messages" id="chatMessages">
                 <div class="message bot-message">
-                    Hi there! 👋 I'm Mat from MultipleAI Solutions. How can I help you today?
+                    Hi there! 👋 I'm Sarah from MultipleAI Solutions. How can I help you today?
                 </div>
             </div>
             <div class="chat-input">
@@ -213,21 +168,6 @@
                 <button class="send-btn" id="sendMessage" aria-label="Send Message">
                     <i class="fas fa-paper-plane"></i>
                 </button>
-            </div>
-        </div>
-
-        <div id="callTab" class="tab-content">
-            <div class="call-section">
-                <h3>Initiate a Call</h3>
-                <div class="call-input">
-                    <input type="tel" id="phoneNumber" placeholder="Enter phone number" required aria-label="Phone number">
-                    <button class="call-btn" id="callBtn" aria-label="Initiate Call">
-                        <i class="fas fa-phone"></i> Call
-                    </button>
-                </div>
-                <p style="font-size: 0.8em; color: #7f8c8d; text-align: center;">
-                    Enter your phone number to receive a call
-                </p>
             </div>
         </div>
     </div>
@@ -322,45 +262,6 @@
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
-
-        // Call Functionality with better error handling
-        const callForm = document.getElementById('callBtn');
-        const phoneNumberInput = document.getElementById('phoneNumber');
-
-        callForm.addEventListener('click', async function(e) {
-            const phoneNumber = phoneNumberInput.value.trim();
-            if (phoneNumber) {
-                callForm.disabled = true;
-                callForm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Calling...';
-                
-                try {
-                    const response = await fetch('/call', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: `phone_number=${encodeURIComponent(phoneNumber)}`,
-                    });
-                    const data = await response.json();
-                    callForm.disabled = false;
-                    callForm.innerHTML = '<i class="fas fa-phone"></i> Call';
-                    
-                    if (data.error) {
-                        alert('Error: ' + data.error);
-                    } else {
-                        alert('Call initiated successfully!');
-                        appendMessage(`Call initiated to ${phoneNumber}. You should receive it shortly.`, 'bot-message');
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
-                    callForm.disabled = false;
-                    callForm.innerHTML = '<i class="fas fa-phone"></i> Call';
-                    alert('Error initiating the call. Please try again later.');
-                }
-            } else {
-                alert('Please enter a valid phone number.');
-            }
-        });
     </script>
 </body>
 </html>
